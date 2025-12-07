@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # 1. Database cho Identity & Accounting (PostgreSQL)
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: bizflow_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: Password123!
+      POSTGRES_DB: bizflow_identity_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - bizflow-network
+
+  # 2. Database cho Product & Order (MySQL)
+  mysql_db:
+    image: mysql:8.0
+    container_name: bizflow_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: Password123!
+      MYSQL_DATABASE: bizflow_catalog_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+    networks:
+      - bizflow-network
+
+  # 3. Redis Cache (Dùng chung)
+  redis_cache:
+    image: redis:alpine
+    container_name: bizflow_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - bizflow-network
+
+  # 4. UI quản lý Database (Adminer - Tùy chọn, để xem DB trên web cho tiện)
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - bizflow-network
+
+networks:
+  bizflow-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  mysqldata:

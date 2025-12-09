@@ -1,0 +1,6 @@
+@BizFlow.ProductAPI_HostAddress = http://localhost:5099
+
+GET {{BizFlow.ProductAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

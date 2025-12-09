@@ -47,6 +47,19 @@ services:
     networks:
       - bizflow-network
 
+  # 5. AI Service (Python FastAPI) - Của Person D
+  ai_service:
+    build:
+      context: ./src/Services/AI_DraftOrder
+      dockerfile: Dockerfile
+    container_name: bizflow_ai_service
+    ports:
+      - "8000:8000" # Map port ra ngoài để test
+    volumes:
+      - ./src/Services/AI_DraftOrder:/app # Mount code để sửa code không cần build lại image
+    networks:
+      - bizflow-network
+      
 networks:
   bizflow-network:
     driver: bridge
@@ -54,3 +67,4 @@ networks:
 volumes:
   pgdata:
   mysqldata:
+

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-multipart
+requests
+chromadb
+openai-whisper
+# Hoặc thư viện gọi API OpenAI nếu không dùng model local
+openai

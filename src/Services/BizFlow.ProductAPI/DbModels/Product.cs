@@ -31,5 +31,7 @@ namespace BizFlow.ProductAPI.DbModels
         public Category Category { get; set; } = null!;
         public ICollection<ProductUnit> ProductUnits { get; set; } = new List<ProductUnit>();
         public Inventory Inventory { get; set; } = null!;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal Price { get; set; }
     }
 }

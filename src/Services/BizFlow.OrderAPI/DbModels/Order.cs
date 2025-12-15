@@ -8,6 +8,7 @@ namespace BizFlow.OrderAPI.DbModels
     {
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
+        public Guid StoreId { get; set; }
         public Guid CustomerId { get; set; }
         public DateTime OrderDate { get; set; } = DateTime.UtcNow;
         public decimal TotalAmount { get; set; }

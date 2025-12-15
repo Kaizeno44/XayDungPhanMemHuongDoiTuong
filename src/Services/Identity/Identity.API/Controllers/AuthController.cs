@@ -1,46 +1,51 @@
-using Identity.Application.DTOs;
-using Identity.Application.Services;
 using Microsoft.AspNetCore.Mvc;
+using Identity.API.Data;   // Để dùng AppDbContext
+using Identity.API.Models; // Để dùng User
+using System.Linq;
 
 namespace Identity.API.Controllers
 {
-    [Route("api/auth")]
+    [Route("api/[controller]")]
     [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly IAuthService _authService;
+        private readonly AppDbContext _context;
 
-        public AuthController(IAuthService authService)
+        // Inject Database vào Controller
+        public AuthController(AppDbContext context)
         {
-            _authService = authService;
-        }
-
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
-        {
-            try
-            {
-                var result = await _authService.RegisterAsync(request);
-                return Ok(new { message = result });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
+            _context = context;
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        public IActionResult Login([FromBody] LoginRequest request)
         {
-            try
+            // 1. Tìm user trong Database khớp Email và Password
+            // (Lưu ý: Password đang lưu text thường, thực tế sẽ cần Hash)
+            var user = _context.Users.FirstOrDefault(u => 
+                u.Email == request.Email && 
+                u.Password == request.Password
+            );
+
+            // 2. Kiểm tra kết quả
+            if (user != null)
             {
-                var token = await _authService.LoginAsync(request);
-                return Ok(new { token = token });
+                // Trả về Token kèm thông tin thật
+                return Ok(new 
+                { 
+                    token = "fake-jwt-token-cho-admin-123456",
+                    fullName = user.FullName,
+                    role = user.Role
+                });
             }
-            catch (Exception ex)
-            {
-                return Unauthorized(new { message = ex.Message });
-            }
+
+            return Unauthorized("Tài khoản hoặc mật khẩu không đúng!");
         }
+    }
+
+    public class LoginRequest
+    {
+        public string Email { get; set; }
+        public string Password { get; set; }
     }
 }

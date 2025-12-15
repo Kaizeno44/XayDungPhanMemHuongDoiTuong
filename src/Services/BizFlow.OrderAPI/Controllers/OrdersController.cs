@@ -41,6 +41,10 @@ namespace BizFlow.OrderAPI.Controllers
                     Id = Guid.NewGuid(),
                     OrderId = newOrder.Id,
                     ProductId = item.ProductId,
+                    
+                    // 👇 MỚI THÊM: Lưu UnitId vào DB
+                    UnitId = item.UnitId,
+                    
                     UnitName = item.UnitName,
                     Quantity = item.Quantity,
                     UnitPrice = item.UnitPrice
@@ -89,6 +93,10 @@ namespace BizFlow.OrderAPI.Controllers
     public class OrderItemRequest
     {
         public int ProductId { get; set; }
+        
+        // 👇 MỚI THÊM: Bắt buộc khách phải gửi mã đơn vị
+        public int UnitId { get; set; }
+        
         public string UnitName { get; set; } = "";
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }

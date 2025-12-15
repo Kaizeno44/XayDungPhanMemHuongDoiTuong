@@ -9,7 +9,12 @@ namespace BizFlow.OrderAPI.DbModels
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid OrderId { get; set; }
+        
         public int ProductId { get; set; } 
+        
+        // 👇 MỚI THÊM: Để khớp với kho hàng của Person B
+        public int UnitId { get; set; }    
+
         public string UnitName { get; set; } = string.Empty;
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; } 

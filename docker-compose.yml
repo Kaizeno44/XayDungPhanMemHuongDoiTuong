@@ -54,9 +54,25 @@ services:
       dockerfile: Dockerfile
     container_name: bizflow_ai
     ports:
-      - "5005:8000"  # Map port 8000 của container ra port 5005 của máy thật
+      - "5005:8000"
     volumes:
-      - ./src/Services/BizFlow.AI:/app  # Hot-reload code khi sửa file
+      - ./src/Services/BizFlow.AI:/app
+    networks:
+      - bizflow-network
+    environment:
+      - CHROMA_HOST=bizflow_chroma  # Tên service chroma vừa khai báo 
+      - CHROMA_PORT=8000
+    depends_on:
+      - chroma_db
+
+  # 6. ChromaDB (Vector Database cho AI)
+  chroma_db:
+    image: chromadb/chroma:latest
+    container_name: bizflow_chroma
+    ports:
+      - "8001:8000" # Map ra port 8001 máy ngoài để bạn dễ debug
+    volumes:
+      - chroma_data:/chroma/chroma # Lưu dữ liệu bền vững
     networks:
       - bizflow-network
 
@@ -67,3 +83,4 @@ networks:
 volumes:
   pgdata:
   mysqldata:
+  chroma_data:

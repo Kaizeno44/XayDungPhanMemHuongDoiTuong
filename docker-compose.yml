@@ -47,6 +47,19 @@ services:
     networks:
       - bizflow-network
 
+  # 5. AI Service (Python FastAPI)
+  ai_service:
+    build:
+      context: ./src/Services/BizFlow.AI
+      dockerfile: Dockerfile
+    container_name: bizflow_ai
+    ports:
+      - "5005:8000"  # Map port 8000 của container ra port 5005 của máy thật
+    volumes:
+      - ./src/Services/BizFlow.AI:/app  # Hot-reload code khi sửa file
+    networks:
+      - bizflow-network
+
 networks:
   bizflow-network:
     driver: bridge

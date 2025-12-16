@@ -118,5 +118,67 @@ namespace BizFlow.ProductAPI.Controllers
             await _context.SaveChangesAsync();
             return Ok(new { Message = "Xuất kho thành công", RemainingStock = inventory.Quantity });
         }
+
+        // 5. API Kiểm tra tồn kho & Lấy giá (Internal API cho Order Service)
+        // POST: api/products/check-stock
+        [HttpPost("check-stock")]
+        public async Task<IActionResult> CheckStock([FromBody] List<CheckStockItem> items)
+        {
+            var results = new List<CheckStockResult>();
+
+            foreach (var item in items)
+            {
+                var result = new CheckStockResult
+                {
+                    ProductId = item.ProductId,
+                    IsAvailable = false
+                };
+
+                // 1. Tìm Product và Unit
+                // (Phải Include Inventory để biết số lượng tồn)
+                var product = await _context.Products
+                    .Include(p => p.Inventory)
+                    .Include(p => p.ProductUnits)
+                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+
+                if (product == null)
+                {
+                    result.Message = "Sản phẩm không tồn tại";
+                    results.Add(result);
+                    continue; // Bỏ qua, check món tiếp theo
+                }
+
+                var unit = product.ProductUnits.FirstOrDefault(u => u.Id == item.UnitId);
+                if (unit == null)
+                {
+                    result.Message = "Đơn vị tính không hợp lệ";
+                    results.Add(result);
+                    continue;
+                }
+
+                // 2. Gán giá tiền (Để bên Order Service biết đường tính tiền)
+                result.UnitPrice = unit.Price;
+
+                // 3. Quy đổi số lượng khách cần ra đơn vị gốc
+                // Ví dụ: Khách mua 2 Tấn (Rate 20) -> Cần 40 Bao
+                var quantityNeeded = item.Quantity * unit.ConversionRate;
+
+                // 4. Kiểm tra kho
+                if (product.Inventory == null || product.Inventory.Quantity < quantityNeeded)
+                {
+                    result.IsAvailable = false;
+                    result.Message = $"Kho không đủ hàng. Còn: {product.Inventory?.Quantity ?? 0} (Gốc), Cần: {quantityNeeded}";
+                }
+                else
+                {
+                    result.IsAvailable = true;
+                    result.Message = "Còn hàng";
+                }
+
+                results.Add(result);
+            }
+
+            return Ok(results);
+        }
     }
 }

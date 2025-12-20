@@ -1,6 +1,5 @@
 using BizFlow.ProductAPI.Data;
 using Microsoft.EntityFrameworkCore;
-// 👇 Dòng này quan trọng: Nếu bạn để file Product.cs trong thư mục DbModels thì phải có dòng này
 using BizFlow.ProductAPI.DbModels; 
 using System.Text.Json.Serialization;
 
@@ -23,6 +22,7 @@ builder.Services.AddDbContext<ProductDbContext>(options =>
 // ==========================================
 builder.Services.AddControllers()
     .AddJsonOptions(x => x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
+    
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -43,11 +43,9 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// ⛔️ TUYỆT ĐỐI KHÔNG CÓ DÒNG app.MapReverseProxy() Ở ĐÂY NHÉ!
-
-app.UseAuthorization();
-app.MapControllers();
-// Tự động tạo dữ liệu mẫu (Seeding Data)
+// ==========================================
+// 4. TỰ ĐỘNG TẠO DỮ LIỆU MẪU (SEEDING)
+// ==========================================
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -55,21 +53,28 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<ProductDbContext>();
         
+        // (Tùy chọn) Tự động chạy Migration nếu chưa chạy
+        // context.Database.Migrate(); 
+
         // Kiểm tra xem bảng Categories đã có dữ liệu chưa
         if (!context.Categories.Any())
         {
-            // Nếu chưa có, tạo mới một cái (Nó sẽ tự nhận ID = 1)
-            context.Categories.Add(new BizFlow.ProductAPI.DbModels.Category 
+            // SỬA LỖI Ở ĐÂY: Xóa Description, Thêm Code
+            context.Categories.Add(new Category 
             { 
                 Name = "Vật liệu xây dựng",
-                Description = "Các loại vật liệu cơ bản"
+                Code = "VL_XD" // <--- Bắt buộc phải có Code
+                // Description = "..." <--- Đã xóa dòng này đi vì Model không còn nữa
             });
+            
             context.SaveChanges(); // Lưu vào DB
+            Console.WriteLine("--> Đã tạo dữ liệu mẫu Category thành công!");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Lỗi khi tạo dữ liệu mẫu: " + ex.Message);
+        Console.WriteLine("--> Lỗi khi tạo dữ liệu mẫu: " + ex.Message);
     }
 }
+
 app.Run();

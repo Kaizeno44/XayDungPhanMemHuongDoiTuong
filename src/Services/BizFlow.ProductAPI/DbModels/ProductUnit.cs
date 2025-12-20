@@ -9,21 +9,19 @@ namespace BizFlow.ProductAPI.DbModels
         [Key]
         public int Id { get; set; }
 
-        [ForeignKey("Product")]
         public int ProductId { get; set; }
+        [ForeignKey("ProductId")]
+        [System.Text.Json.Serialization.JsonIgnore] // Tránh vòng lặp JSON
+        public Product Product { get; set; }
 
         [Required]
-        [MaxLength(20)]
-        public string UnitName { get; set; } = string.Empty; // VD: Thùng, Bao
+        public string UnitName { get; set; } = string.Empty; // VD: Bao, Tấn, Xe
 
-        // QUAN TRỌNG: Tỷ lệ quy đổi (VD: 24)
-        public int ConversionRate { get; set; } = 1; 
+        public double ConversionValue { get; set; } = 1; // Quy đổi: 1 Tấn = 20 Bao
+        
+        public bool IsBaseUnit { get; set; } = false; // Đơn vị gốc?
 
-        public decimal Price { get; set; } = 0; // Giá bán theo đơn vị này
-
-        public bool IsDefault { get; set; } = false;
-
-        // Nối ngược về Product
-        public Product Product { get; set; } = null!;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal Price { get; set; } // 💰 GIÁ TIỀN NẰM Ở ĐÂY
     }
 }

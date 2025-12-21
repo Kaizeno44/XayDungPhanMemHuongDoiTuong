@@ -2,7 +2,6 @@ using BizFlow.ProductAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using BizFlow.ProductAPI.DbModels; 
 using System.Text.Json.Serialization;
-// --- THÊM CÁC THƯ VIỆN NÀY ĐỂ DÙNG JWT ---
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -16,26 +15,25 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<ProductDbContext>(options =>
 {
+    // Lưu ý: Đảm bảo chuỗi kết nối trong appsettings.json là chính xác
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 });
 
 // ==========================================
-// 2. CẤU HÌNH JWT (QUAN TRỌNG - MỚI THÊM)
+// 2. CẤU HÌNH JWT 
 // ==========================================
-// Đây là phần cấu hình để hệ thống hiểu và kiểm tra "thẻ bài" (Token)
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        // Lấy Key bí mật từ appsettings.json, nếu không có thì dùng key mặc định bên dưới để test
         var keyVal = builder.Configuration["Jwt:Key"] ?? "DayLaMotCaiKeyBiMatRatDaiDeTestJWT123456";
         var key = Encoding.UTF8.GetBytes(keyVal);
         
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = false, // Tạm thời bỏ qua check người phát hành
-            ValidateAudience = false, // Tạm thời bỏ qua check người nhận
-            ValidateLifetime = true,  // Kiểm tra xem token còn hạn không
-            ValidateIssuerSigningKey = true, // Kiểm tra chữ ký có đúng key không
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(key)
         };
     });
@@ -52,7 +50,7 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // ==========================================
-// 4. CẤU HÌNH PIPELINE (MIDDLEWARE)
+// 4. CẤU HÌNH PIPELINE
 // ==========================================
 if (app.Environment.IsDevelopment())
 {
@@ -62,14 +60,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// --- QUAN TRỌNG: UseAuthentication PHẢI ĐỨNG TRƯỚC UseAuthorization ---
-app.UseAuthentication(); // <--- MỚI THÊM: Kiểm tra "Bạn là ai?"
-app.UseAuthorization();  // <--- CŨ: Kiểm tra "Bạn có quyền gì?"
+app.UseAuthentication(); 
+app.UseAuthorization();  
 
 app.MapControllers();
 
 // ==========================================
-// 5. TỰ ĐỘNG TẠO DỮ LIỆU MẪU (SEEDING)
+// 5. TỰ ĐỘNG TẠO DỮ LIỆU MẪU (ĐÃ SỬA)
 // ==========================================
 using (var scope = app.Services.CreateScope())
 {
@@ -78,7 +75,12 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<ProductDbContext>();
         
-        // Kiểm tra xem bảng Categories đã có dữ liệu chưa
+        // 🔥🔥🔥 DÒNG QUAN TRỌNG NHẤT VỪA ĐƯỢC THÊM VÀO ĐÂY 🔥🔥🔥
+        // Lệnh này kiểm tra xem DB có chưa. Chưa có thì tạo mới + tạo bảng luôn.
+        context.Database.EnsureCreated(); 
+        // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+
+        // Sau khi đảm bảo DB đã có, mới được phép truy vấn
         if (!context.Categories.Any())
         {
             context.Categories.Add(new Category 
@@ -88,12 +90,12 @@ using (var scope = app.Services.CreateScope())
             });
             
             context.SaveChanges();
-            Console.WriteLine("--> Đã tạo dữ liệu mẫu Category thành công!");
+            Console.WriteLine("--> Product Service: Đã tạo DB + dữ liệu mẫu thành công!");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine("--> Lỗi khi tạo dữ liệu mẫu: " + ex.Message);
+        Console.WriteLine("--> Lỗi khởi tạo DB Product: " + ex.Message);
     }
 }
 

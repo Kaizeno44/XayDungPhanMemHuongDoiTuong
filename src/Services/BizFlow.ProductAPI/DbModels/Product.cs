@@ -8,27 +8,25 @@ namespace BizFlow.ProductAPI.DbModels
     {
         [Key]
         public int Id { get; set; }
-
-        [Required]
-        public string Name { get; set; } = string.Empty;
-
-        [Required]
-        public string Sku { get; set; } = string.Empty;
-
-        public string? ImageUrl { get; set; }
-        public string? Description { get; set; }
-
         public int CategoryId { get; set; }
         [ForeignKey("CategoryId")]
         public Category Category { get; set; }
 
-        public string BaseUnit { get; set; } = string.Empty;
+        [Required, MaxLength(200)]
+        public string Name { get; set; } = string.Empty; // VD: Xi măng Hà Tiên
 
-        // --- LIÊN KẾT BẢNG ---
-        // 1 Sản phẩm có 1 thông tin kho
+        [Required, MaxLength(50)]
+        public string Sku { get; set; } = string.Empty; // VD: XM_HT_01
+
+        public string BaseUnit { get; set; } = string.Empty; // VD: Kg (Đơn vị gốc để tính kho)
+
+        public string? ImageUrl { get; set; }
+        public string? Description { get; set; }
+        
+        public bool IsActive { get; set; } = true; // 👈 Mới thêm
+
+        // --- LIÊN KẾT ---
         public Inventory Inventory { get; set; } 
-
-        // 1 Sản phẩm có nhiều đơn vị tính
         public ICollection<ProductUnit> ProductUnits { get; set; } = new List<ProductUnit>();
     }
 }

@@ -63,7 +63,7 @@ namespace BizFlow.ProductAPI.Controllers
                 var inventory = new Inventory
                 {
                     ProductId = product.Id,
-                    Quantity = request.InitialStock, 
+                    Quantity = request.InitialStock,
                     LastUpdated = DateTime.UtcNow
                 };
                 _context.Inventories.Add(inventory);
@@ -115,8 +115,8 @@ namespace BizFlow.ProductAPI.Controllers
             if (unit == null) return BadRequest("Đơn vị tính không hợp lệ");
 
             var inventory = await _context.Inventories.FirstOrDefaultAsync(i => i.ProductId == request.ProductId);
-            
-            if (inventory == null) 
+
+            if (inventory == null)
             {
                 inventory = new Inventory { ProductId = request.ProductId, Quantity = 0 };
                 _context.Inventories.Add(inventory);
@@ -125,7 +125,7 @@ namespace BizFlow.ProductAPI.Controllers
             double currentStock = inventory.Quantity;
             double change = request.QuantityChange;
             double conversion = unit.ConversionValue;
-            
+
             double quantityInBase = change * conversion;
 
             // Kiểm tra tồn kho (Logic chặn bán quá số lượng)
@@ -162,7 +162,7 @@ namespace BizFlow.ProductAPI.Controllers
             foreach (var req in requests)
             {
                 var product = products.FirstOrDefault(p => p.Id == req.ProductId);
-                
+
                 if (product == null)
                 {
                     results.Add(new CheckStockResult { ProductId = req.ProductId, IsEnough = false, Message = "Sản phẩm không tồn tại" });
@@ -185,16 +185,64 @@ namespace BizFlow.ProductAPI.Controllers
                 }
                 else
                 {
-                    results.Add(new CheckStockResult 
-                    { 
-                        ProductId = req.ProductId, 
-                        IsEnough = false, 
-                        Message = $"Thiếu hàng. Kho còn: {currentStock} {product.BaseUnit}. Khách cần: {requestedQtyInBase} {product.BaseUnit} ({req.Quantity} {unit.UnitName})" 
+                    results.Add(new CheckStockResult
+                    {
+                        ProductId = req.ProductId,
+                        IsEnough = false,
+                        Message = $"Thiếu hàng. Kho còn: {currentStock} {product.BaseUnit}. Khách cần: {requestedQtyInBase} {product.BaseUnit} ({req.Quantity} {unit.UnitName})"
                     });
                 }
             }
 
             return Ok(results);
+        }
+        // 5. GET LIST: Lấy danh sách có tìm kiếm & phân trang
+        // API: GET /api/Products?keyword=xi&categoryId=4&page=1&pageSize=10
+        [HttpGet]
+        public async Task<IActionResult> GetProducts(
+            [FromQuery] string? keyword,
+            [FromQuery] int categoryId = 0,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            // 1. Khởi tạo Query (chưa chạy vào DB ngay)
+            var query = _context.Products
+                .Include(p => p.Category)      // Kèm thông tin nhóm hàng
+                .Include(p => p.Inventory)     // Kèm tồn kho
+                .Include(p => p.ProductUnits)  // Kèm các đơn vị tính
+                .AsQueryable();
+
+            // 2. Lọc theo từ khóa (Nếu có)
+            if (!string.IsNullOrEmpty(keyword))
+            {
+                // Tìm theo Tên hoặc theo mã SKU
+                query = query.Where(p => p.Name.Contains(keyword) || p.Sku.Contains(keyword));
+            }
+
+            // 3. Lọc theo nhóm hàng (Nếu có chọn)
+            if (categoryId > 0)
+            {
+                query = query.Where(p => p.CategoryId == categoryId);
+            }
+
+            // 4. Tính tổng số bản ghi (Để phía Client biết mà chia trang)
+            int totalItems = await query.CountAsync();
+
+            // 5. Phân trang & Thực thi truy vấn (Lúc này mới gọi xuống DB)
+            var products = await query
+                .OrderByDescending(p => p.Id) // Sắp xếp sản phẩm mới nhất lên đầu
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            // 6. Trả về kết quả chuẩn
+            return Ok(new
+            {
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize,
+                Data = products
+            });
         }
     }
 }

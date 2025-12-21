@@ -13,6 +13,6 @@ namespace BizFlow.ProductAPI.DTOs
     {
         public int ProductId { get; set; }
         public bool IsEnough { get; set; } // Đủ hàng hay không
-        public string Message { get; set; } // Lý do (VD: Chỉ còn 40 Bao)
+        public string Message { get; set; }= string.Empty; // Lý do (VD: Chỉ còn 40 Bao)
     }
 }

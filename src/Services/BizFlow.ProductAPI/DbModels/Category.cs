@@ -9,14 +9,10 @@ namespace BizFlow.ProductAPI.DbModels
         [Key]
         public int Id { get; set; }
 
-        [Required]
-        [MaxLength(100)]
+        [Required, MaxLength(50)]
+        public string Code { get; set; } = string.Empty; // Mã nhóm (VD: CAT, DA)
+
+        [Required, MaxLength(100)]
         public string Name { get; set; } = string.Empty;
-
-        [MaxLength(255)]
-        public string Description { get; set; } = string.Empty;
-
-        // Quan hệ: 1 Category có nhiều Product
-        // public ICollection<Product> Products { get; set; }
     }
 }

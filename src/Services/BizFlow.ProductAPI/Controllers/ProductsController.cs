@@ -85,11 +85,11 @@ namespace BizFlow.ProductAPI.Controllers
             var unit = await _context.ProductUnits
                 .FirstOrDefaultAsync(u => u.ProductId == id && u.Id == unitId);
 
-            if (unit == null) 
+            if (unit == null)
                 return BadRequest(new { message = "Đơn vị tính không hợp lệ" });
 
-            return Ok(new 
-            { 
+            return Ok(new
+            {
                 ProductId = id,
                 UnitId = unitId,
                 UnitName = unit.UnitName,
@@ -143,32 +143,77 @@ namespace BizFlow.ProductAPI.Controllers
         // 3. NHÓM API: QUẢN TRỊ & CẬP NHẬT KHO
         // ==========================================
 
-        // 3.1 Tạo sản phẩm (Giữ nguyên)
+        // 3.1 Tạo sản phẩm 
         [HttpPost]
+        // [Authorize(Roles = "Admin")] // Mở lại dòng này nếu đã cấu hình Auth
         public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
         {
-            // (Giữ nguyên logic tạo sản phẩm như code cũ của bạn để tiết kiệm diện tích hiển thị)
-            // ... Logic tạo Product, Inventory, Unit ...
-            // Bạn copy lại phần thân hàm CreateProduct từ code cũ vào đây nhé
-            
-            // DEMO rút gọn để code chạy được ngay:
+            // 1. Kiểm tra trùng SKU
             if (await _context.Products.AnyAsync(p => p.Sku == request.Sku))
                 return BadRequest(new { message = "Mã SKU đã tồn tại!" });
 
-            var product = new Product 
-            { 
-                Name = request.Name, Sku = request.Sku, CategoryId = request.CategoryId, 
-                BaseUnit = request.BaseUnitName, Description = request.Description 
-            };
-            _context.Products.Add(product);
-            await _context.SaveChangesAsync();
-            
-            // Tạo Inventory & Unit mặc định (giản lược)
-            _context.Inventories.Add(new Inventory { ProductId = product.Id, Quantity = request.InitialStock, LastUpdated = DateTime.UtcNow });
-            _context.ProductUnits.Add(new ProductUnit { ProductId = product.Id, UnitName = request.BaseUnitName, ConversionValue = 1, IsBaseUnit = true, Price = request.BasePrice });
-            await _context.SaveChangesAsync();
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // 2. Lưu thông tin chính (Product)
+                var product = new Product
+                {
+                    Name = request.Name,
+                    Sku = request.Sku,
+                    CategoryId = request.CategoryId,
+                    BaseUnit = request.BaseUnitName,
+                    ImageUrl = request.ImageUrl, // Đã map thêm ảnh
+                    Description = request.Description
+                };
+                _context.Products.Add(product);
+                await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Tạo sản phẩm thành công", productId = product.Id });
+                // 3. Lưu tồn kho ban đầu (Inventory)
+                var inventory = new Inventory
+                {
+                    ProductId = product.Id,
+                    Quantity = request.InitialStock,
+                    LastUpdated = DateTime.UtcNow
+                };
+                _context.Inventories.Add(inventory);
+
+                // 4. Lưu đơn vị gốc (Base Unit)
+                var baseUnit = new ProductUnit
+                {
+                    ProductId = product.Id,
+                    UnitName = request.BaseUnitName,
+                    ConversionValue = 1,
+                    IsBaseUnit = true,
+                    Price = request.BasePrice
+                };
+                _context.ProductUnits.Add(baseUnit);
+
+                // 5. Lưu các đơn vị quy đổi khác (QUAN TRỌNG: Phần này bị thiếu ở code cũ)
+                if (request.OtherUnits != null && request.OtherUnits.Any())
+                {
+                    foreach (var u in request.OtherUnits)
+                    {
+                        _context.ProductUnits.Add(new ProductUnit
+                        {
+                            ProductId = product.Id,
+                            UnitName = u.UnitName,
+                            ConversionValue = u.ConversionValue,
+                            IsBaseUnit = false, // Đây là đơn vị phụ
+                            Price = u.Price
+                        });
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new { message = "Tạo sản phẩm thành công", productId = product.Id });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi hệ thống: " + ex.Message });
+            }
         }
 
         // 3.2 CẬP NHẬT KHO THÔNG MINH (Smart Update Stock)
@@ -176,8 +221,8 @@ namespace BizFlow.ProductAPI.Controllers
         // PUT: /api/Products/stock?mode=out
         [HttpPut("stock")]
         public async Task<IActionResult> UpdateStock(
-            [FromBody] UpdateStockRequest request, 
-            [FromQuery] string mode = "auto") 
+            [FromBody] UpdateStockRequest request,
+            [FromQuery] string mode = "auto")
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -199,9 +244,9 @@ namespace BizFlow.ProductAPI.Controllers
 
                 // --- LOGIC XỬ LÝ DẤU ---
                 double quantityBase = 0;
-                double absQuantity = Math.Abs(request.QuantityChange); 
+                double absQuantity = Math.Abs(request.QuantityChange);
 
-                if (mode == "out") 
+                if (mode == "out")
                 {
                     // Person C gửi số 10 -> Code tự nhân -1 -> Thành -10 (TRỪ KHO)
                     quantityBase = -1 * absQuantity * unit.ConversionValue;
@@ -230,11 +275,11 @@ namespace BizFlow.ProductAPI.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                
 
-                return Ok(new 
-                { 
-                    message = quantityBase < 0 ? "Xuất kho thành công" : "Nhập kho thành công", 
+
+                return Ok(new
+                {
+                    message = quantityBase < 0 ? "Xuất kho thành công" : "Nhập kho thành công",
                     currentStock = inventory.Quantity,
                     changedAmount = quantityBase
                 });

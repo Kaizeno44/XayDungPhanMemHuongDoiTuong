@@ -259,5 +259,63 @@ namespace BizFlow.ProductAPI.Controllers
             await _context.SaveChangesAsync();
             return Ok(new { Message = "Nhập kho thành công", NewQuantity = inventory.Quantity });
         }
+        // 3.3 API Dành riêng cho Order Service: Gửi số DƯƠNG để TRỪ kho
+        // POST: /api/Products/stock
+        [HttpPost("stock")]
+        public async Task<IActionResult> ReduceStock([FromBody] UpdateStockRequest request)
+        {
+            if (request.QuantityChange <= 0)
+                return BadRequest(new { message = "Số lượng bán phải là số dương (> 0)" });
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // 1. Tìm tồn kho
+                var inventory = await _context.Inventories
+                    .FirstOrDefaultAsync(x => x.ProductId == request.ProductId);
+
+                if (inventory == null)
+                    return BadRequest(new { message = "Sản phẩm chưa có dữ liệu tồn kho!" });
+
+                // 2. Lấy đơn vị tính để quy đổi
+                var unit = await _context.ProductUnits
+                    .FirstOrDefaultAsync(u => u.Id == request.UnitId && u.ProductId == request.ProductId);
+
+                if (unit == null)
+                    return BadRequest(new { message = "Đơn vị tính không hợp lệ!" });
+
+                // 3. Quy đổi ra đơn vị gốc
+                // Ví dụ: Khách mua 10 Bao (Quantity = 10) -> Trừ 10
+                // Ví dụ: Khách mua 1 Tấn (Quantity = 1) -> Trừ 20
+                double quantityToDeduct = request.QuantityChange * unit.ConversionValue;
+
+                // 4. Kiểm tra xem đủ hàng để trừ không
+                if (inventory.Quantity < quantityToDeduct)
+                {
+                    return BadRequest(new 
+                    { 
+                        message = $"Kho không đủ hàng! Hiện còn: {inventory.Quantity}, Cần bán: {quantityToDeduct}" 
+                    });
+                }
+
+                // 5. TRỪ KHO (Phép trừ thực hiện ở đây)
+                inventory.Quantity -= quantityToDeduct;
+                inventory.LastUpdated = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new 
+                { 
+                    message = "Xuất kho thành công", 
+                    currentStock = inventory.Quantity 
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi hệ thống: " + ex.Message });
+            }
+        }
     }
 }

@@ -53,15 +53,17 @@ services:
       context: ./src/Services/BizFlow.AI
       dockerfile: Dockerfile
     container_name: bizflow_ai
+    environment:
+      - CHROMA_HOST=bizflow_chroma
+      - CHROMA_PORT=8000
+      # 👇 Thay Key Gemini của bạn vào đây
+      - GEMINI_API_KEY=AIzaSyBT00QHx_F-A6vyROQnKufDeRCPRo1l_Vs
     ports:
       - "5005:8000"
     volumes:
       - ./src/Services/BizFlow.AI:/app
     networks:
       - bizflow-network
-    environment:
-      - CHROMA_HOST=bizflow_chroma  # Tên service chroma vừa khai báo 
-      - CHROMA_PORT=8000
     depends_on:
       - chroma_db
 
@@ -70,9 +72,9 @@ services:
     image: chromadb/chroma:latest
     container_name: bizflow_chroma
     ports:
-      - "8001:8000" # Map ra port 8001 máy ngoài để bạn dễ debug
+      - "8001:8000"
     volumes:
-      - chroma_data:/chroma/chroma # Lưu dữ liệu bền vững
+      - chroma_data:/chroma/chroma
     networks:
       - bizflow-network
 

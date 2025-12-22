@@ -1,78 +1,70 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
-from typing import List
-from app.services.rag_service import rag_client # Import service vừa viết
+from typing import List, Any
+import os
+import google.generativeai as genai
+
+# Import 2 service vừa viết
+from app.services.stt_service import transcribe_audio
+from app.services.nlp_service import extract_order_info
+from app.services.rag_service import rag_client # Vẫn giữ kết nối ChromaDB
 
 app = FastAPI(title="BizFlow AI Service", version="1.0.0")
 
-# --- MODEL DỮ LIỆU (Contract với Mobile & Order Service) ---
-class OrderItemDraft(BaseModel):
-    product_name_spoken: str  # Tên người dùng nói
-    sku: str                  # Mã SKU tìm được (Giả lập)
-    quantity: int
-    unit: str                 # Đơn vị tính
-
+# --- MODEL RESPONSE ---
 class DraftOrderResponse(BaseModel):
     success: bool
     message: str
-    data: dict | None
+    data: Any # Cho phép linh động JSON trả về
 
-# --- API ENDPOINTS ---
+@app.on_event("startup")
+async def startup_event():
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            print("======= DANH SÁCH MODEL GEMINI KHẢ DỤNG =======")
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    print(f"- {m.name}")
+            print("===============================================")
+    except Exception as e:
+        print(f"Lỗi check model: {e}")
 
 @app.get("/")
 def health_check():
-    # Kiểm tra luôn kết nối ChromaDB khi check health
     chroma_status = rag_client.check_health()
-    return {
-        "service": "AI Service Running",
-        "chroma_db_connected": chroma_status is not None,
-        "chroma_latency": chroma_status
-    }
+    return {"service": "AI Service Real", "chroma": chroma_status}
 
-@app.post("/api/ai/speech-to-text", response_model=DraftOrderResponse)
-async def speech_to_text(file: UploadFile = File(...)):
-    """
-    1. Nhận file âm thanh.
-    2. (Mock) Giả vờ convert text -> Tìm sản phẩm.
-    3. Trả về JSON để Frontend điền form.
-    """
-    
-    # Validation file (chỉ cho phép đuôi âm thanh)
+@app.post("/api/ai/analyze-voice", response_model=DraftOrderResponse)
+async def analyze_voice(file: UploadFile = File(...)):
+    # 1. Validation file
     if not file.filename.lower().endswith(('.wav', '.mp3', '.m4a', '.ogg')):
-        return DraftOrderResponse(
-            success=False, 
-            message="Định dạng file không hỗ trợ. Hãy dùng .wav hoặc .mp3", 
-            data=None
-        )
+        return DraftOrderResponse(success=False, message="Sai định dạng file", data=None)
 
-    # --- ĐÂY LÀ MOCK DATA (GIẢ LẬP) ---
-    # Tình huống: Khách nói "Cho anh 5 bao xi măng Hà Tiên và 2 khối cát vàng"
+    # 2. Đọc file vào RAM
+    file_bytes = await file.read()
     
-    mock_result = {
-        "raw_text": "Lấy cho anh 5 bao xi măng Hà Tiên và 2 khối cát vàng nợ nhé",
-        "intent": "create_order",
-        "is_debt": True, # Phát hiện từ khóa "nợ"
-        "customer_name": "Anh Khách Lẻ", # Chưa định danh được thì để chung
-        "items": [
-            {
-                "product_name_spoken": "xi măng Hà Tiên",
-                "sku": "XM_HATIEN_01", # Giả định đã tìm thấy trong ChromaDB
-                "quantity": 5,
-                "unit": "bao"
-            },
-            {
-                "product_name_spoken": "cát vàng",
-                "sku": "CAT_VANG_XAY",
-                "quantity": 2,
-                "unit": "khoi"
-            }
-        ]
-    }
+    # 3. GỌI WHISPER (Nghe)
+    text_result = await transcribe_audio(file_bytes, file.filename)
+    if not text_result:
+        return DraftOrderResponse(success=False, message="Không nghe rõ âm thanh", data=None)
+    
+    print(f"DEBUG - Text nghe được: {text_result}")
+
+    # 4. GỌI GPT (Hiểu)
+    json_result = extract_order_info(text_result)
+    
+    if not json_result:
+         return DraftOrderResponse(success=False, message="Lỗi phân tích cú pháp", data=None)
+
+    # 5. Ghép thêm text gốc vào để frontend hiển thị
+    json_result["raw_text_spoken"] = text_result
 
     return DraftOrderResponse(
         success=True,
-        message="Phân tích giọng nói thành công (Mock)",
-        data=mock_result
+        message="Phân tích thành công",
+        data=json_result
     )
 
 if __name__ == "__main__":

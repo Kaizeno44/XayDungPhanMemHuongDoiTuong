@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using BizFlow.ProductAPI.Data;
 using BizFlow.ProductAPI.DbModels;
 using BizFlow.ProductAPI.DTOs;
-using Microsoft.AspNetCore.Authorization; // 1. Bắt buộc phải có thư viện này
+using Microsoft.AspNetCore.Authorization;
 
 namespace BizFlow.ProductAPI.Controllers
 {
@@ -18,7 +18,48 @@ namespace BizFlow.ProductAPI.Controllers
             _context = context;
         }
 
-        // 1. GET: Ai cũng được xem -> KHÔNG CẦN [Authorize]
+        // ==========================================
+        // 1. NHÓM API: TRA CỨU & HIỂN THỊ (Public)
+        // ==========================================
+
+        // 1.1 Lấy danh sách (Search, Filter, Paging)
+        [HttpGet]
+        public async Task<IActionResult> GetProducts(
+            [FromQuery] string? keyword,
+            [FromQuery] int categoryId = 0,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var query = _context.Products
+                .Include(p => p.Category)
+                .Include(p => p.Inventory)
+                .Include(p => p.ProductUnits)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(keyword))
+                query = query.Where(p => p.Name.Contains(keyword) || p.Sku.Contains(keyword));
+
+            if (categoryId > 0)
+                query = query.Where(p => p.CategoryId == categoryId);
+
+            int totalItems = await query.CountAsync();
+
+            var products = await query
+                .OrderByDescending(p => p.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(new
+            {
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize,
+                Data = products
+            });
+        }
+
+        // 1.2 Lấy chi tiết 1 sản phẩm
         [HttpGet("{id}")]
         public async Task<IActionResult> GetProductById(int id)
         {
@@ -33,10 +74,103 @@ namespace BizFlow.ProductAPI.Controllers
             return Ok(product);
         }
 
-        // 2. POST: Tạo sản phẩm -> CHỈ ADMIN (Cần đăng nhập)
+        // ==========================================
+        // 2. NHÓM API: LOGIC BÁN HÀNG (Dành cho Order Service)
+        // ==========================================
+
+        // 2.1 Lấy giá bán theo Đơn vị tính (MỚI THÊM - Cực quan trọng cho ông C)
+        // GET: /api/Products/2/price?unitId=4
+        [HttpGet("{id}/price")]
+        public async Task<IActionResult> GetProductPrice(int id, [FromQuery] int unitId)
+        {
+            // Tìm unit của sản phẩm đó
+            var unit = await _context.ProductUnits
+                .FirstOrDefaultAsync(u => u.ProductId == id && u.Id == unitId);
+
+            if (unit == null) 
+                return BadRequest(new { message = "Đơn vị tính không hợp lệ hoặc không thuộc sản phẩm này" });
+
+            // Trả về giá chuẩn do Product Service quy định
+            return Ok(new 
+            { 
+                ProductId = id,
+                UnitId = unitId,
+                UnitName = unit.UnitName,
+                Price = unit.Price, // Giá bán (Order Service lấy giá này để tạo đơn)
+                ConversionValue = unit.ConversionValue
+            });
+        }
+
+        // 2.2 Kiểm tra tồn kho (Logic Đa đơn vị tính)
+        // POST: /api/Products/check-stock
+        [HttpPost("check-stock")]
+        public async Task<IActionResult> CheckStock([FromBody] List<CheckStockRequest> requests)
+        {
+            var results = new List<CheckStockResult>();
+            
+            // Lấy danh sách ID sản phẩm cần check để query 1 lần cho nhanh
+            var productIds = requests.Select(r => r.ProductId).Distinct().ToList();
+
+            var products = await _context.Products
+                .Include(p => p.Inventory)
+                .Include(p => p.ProductUnits)
+                .Where(p => productIds.Contains(p.Id))
+                .ToListAsync();
+
+            foreach (var req in requests)
+            {
+                var product = products.FirstOrDefault(p => p.Id == req.ProductId);
+
+                // 1. Check Sản phẩm có tồn tại không
+                if (product == null)
+                {
+                    results.Add(new CheckStockResult { ProductId = req.ProductId, IsEnough = false, Message = "Sản phẩm không tồn tại" });
+                    continue;
+                }
+
+                // 2. Check Unit có hợp lệ không
+                var unit = product.ProductUnits.FirstOrDefault(u => u.Id == req.UnitId);
+                if (unit == null)
+                {
+                    results.Add(new CheckStockResult { ProductId = req.ProductId, IsEnough = false, Message = "Đơn vị tính không hợp lệ" });
+                    continue;
+                }
+
+                // 3. LOGIC QUAN TRỌNG: Quy đổi ra đơn vị gốc để so sánh tồn kho
+                // Ví dụ: Khách mua 5 Thiên (1 thiên = 1000 viên) => Cần 5000 viên
+                double requestedQtyInBase = req.Quantity * unit.ConversionValue;
+                double currentStock = product.Inventory?.Quantity ?? 0;
+
+                if (currentStock >= requestedQtyInBase)
+                {
+                    results.Add(new CheckStockResult { 
+                        ProductId = req.ProductId, 
+                        IsEnough = true, 
+                        Message = "Đủ hàng",
+                        UnitPrice = unit.Price // Trả luôn giá để đỡ phải gọi API khác
+                    });
+                }
+                else
+                {
+                    results.Add(new CheckStockResult
+                    {
+                        ProductId = req.ProductId,
+                        IsEnough = false,
+                        Message = $"Thiếu hàng. Kho còn: {currentStock} {product.BaseUnit}. Khách cần: {requestedQtyInBase} {product.BaseUnit}"
+                    });
+                }
+            }
+
+            return Ok(results);
+        }
+
+        // ==========================================
+        // 3. NHÓM API: QUẢN TRỊ KHO & SẢN PHẨM (Admin/Staff)
+        // ==========================================
+
+        // 3.1 Tạo sản phẩm mới
         [HttpPost]
-        // [Authorize] // <--- ĐÃ THÊM BẢO MẬT
-        // [Authorize(Roles = "Admin")] // <--- Sau này mở dòng này để chặn chỉ Admin mới được tạo
+        // [Authorize(Roles = "Admin")] // Mở ra khi nào có Login
         public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
         {
             if (await _context.Products.AnyAsync(p => p.Sku == request.Sku))
@@ -59,7 +193,7 @@ namespace BizFlow.ProductAPI.Controllers
                 _context.Products.Add(product);
                 await _context.SaveChangesAsync();
 
-                // B. Tạo Inventory
+                // B. Tạo Inventory ban đầu
                 var inventory = new Inventory
                 {
                     ProductId = product.Id,
@@ -68,7 +202,7 @@ namespace BizFlow.ProductAPI.Controllers
                 };
                 _context.Inventories.Add(inventory);
 
-                // C. Tạo Units
+                // C. Tạo Units (Đơn vị tính)
                 var baseUnit = new ProductUnit
                 {
                     ProductId = product.Id,
@@ -97,7 +231,7 @@ namespace BizFlow.ProductAPI.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                return CreatedAtAction(nameof(GetProductById), new { id = product.Id }, product);
+                return Ok(new { message = "Tạo sản phẩm thành công", productId = product.Id });
             }
             catch (Exception ex)
             {
@@ -106,143 +240,24 @@ namespace BizFlow.ProductAPI.Controllers
             }
         }
 
-        // 3. PUT: Cập nhật kho -> NHÂN VIÊN/ADMIN (Cần đăng nhập)
-        [HttpPut("stock")]
-        // [Authorize] // <--- ĐÃ THÊM BẢO MẬT
-        public async Task<IActionResult> UpdateStock([FromBody] UpdateStockRequest request)
+        // 3.2 Nhập kho (Stock In) - Dùng để tăng số lượng
+        [HttpPost("{id}/stock-in")]
+        public async Task<IActionResult> StockIn(int id, [FromQuery] int quantity)
         {
-            var unit = await _context.ProductUnits.FindAsync(request.UnitId);
-            if (unit == null) return BadRequest("Đơn vị tính không hợp lệ");
+            if (quantity <= 0) return BadRequest("Số lượng nhập phải > 0");
 
-            var inventory = await _context.Inventories.FirstOrDefaultAsync(i => i.ProductId == request.ProductId);
-
+            var inventory = await _context.Inventories.FirstOrDefaultAsync(x => x.ProductId == id);
             if (inventory == null)
             {
-                inventory = new Inventory { ProductId = request.ProductId, Quantity = 0 };
+                inventory = new Inventory { ProductId = id, Quantity = 0, LastUpdated = DateTime.UtcNow };
                 _context.Inventories.Add(inventory);
             }
 
-            double currentStock = inventory.Quantity;
-            double change = request.QuantityChange;
-            double conversion = unit.ConversionValue;
-
-            double quantityInBase = change * conversion;
-
-            // Kiểm tra tồn kho (Logic chặn bán quá số lượng)
-            if (quantityInBase < 0 && (currentStock + quantityInBase) < 0)
-            {
-                return BadRequest(new { message = "Kho không đủ hàng!" });
-            }
-
-            inventory.Quantity += quantityInBase;
+            inventory.Quantity += quantity;
             inventory.LastUpdated = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                message = "Cập nhật kho thành công",
-                currentStock = inventory.Quantity
-            });
-        }
-
-        // 4. API INTERNAL: Để Service khác gọi -> Tạm thời mở để dễ test
-        [HttpPost("check-stock")]
-        public async Task<IActionResult> CheckStock([FromBody] List<CheckStockRequest> requests)
-        {
-            var results = new List<CheckStockResult>();
-            var productIds = requests.Select(r => r.ProductId).Distinct().ToList();
-
-            var products = await _context.Products
-                .Include(p => p.Inventory)
-                .Include(p => p.ProductUnits)
-                .Where(p => productIds.Contains(p.Id))
-                .ToListAsync();
-
-            foreach (var req in requests)
-            {
-                var product = products.FirstOrDefault(p => p.Id == req.ProductId);
-
-                if (product == null)
-                {
-                    results.Add(new CheckStockResult { ProductId = req.ProductId, IsEnough = false, Message = "Sản phẩm không tồn tại" });
-                    continue;
-                }
-
-                var unit = product.ProductUnits.FirstOrDefault(u => u.Id == req.UnitId);
-                if (unit == null)
-                {
-                    results.Add(new CheckStockResult { ProductId = req.ProductId, IsEnough = false, Message = "Đơn vị tính không hợp lệ" });
-                    continue;
-                }
-
-                double requestedQtyInBase = req.Quantity * unit.ConversionValue;
-                double currentStock = product.Inventory?.Quantity ?? 0;
-
-                if (currentStock >= requestedQtyInBase)
-                {
-                    results.Add(new CheckStockResult { ProductId = req.ProductId, IsEnough = true, Message = "Đủ hàng" });
-                }
-                else
-                {
-                    results.Add(new CheckStockResult
-                    {
-                        ProductId = req.ProductId,
-                        IsEnough = false,
-                        Message = $"Thiếu hàng. Kho còn: {currentStock} {product.BaseUnit}. Khách cần: {requestedQtyInBase} {product.BaseUnit} ({req.Quantity} {unit.UnitName})"
-                    });
-                }
-            }
-
-            return Ok(results);
-        }
-        // 5. GET LIST: Lấy danh sách có tìm kiếm & phân trang
-        // API: GET /api/Products?keyword=xi&categoryId=4&page=1&pageSize=10
-        [HttpGet]
-        public async Task<IActionResult> GetProducts(
-            [FromQuery] string? keyword,
-            [FromQuery] int categoryId = 0,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10)
-        {
-            // 1. Khởi tạo Query (chưa chạy vào DB ngay)
-            var query = _context.Products
-                .Include(p => p.Category)      // Kèm thông tin nhóm hàng
-                .Include(p => p.Inventory)     // Kèm tồn kho
-                .Include(p => p.ProductUnits)  // Kèm các đơn vị tính
-                .AsQueryable();
-
-            // 2. Lọc theo từ khóa (Nếu có)
-            if (!string.IsNullOrEmpty(keyword))
-            {
-                // Tìm theo Tên hoặc theo mã SKU
-                query = query.Where(p => p.Name.Contains(keyword) || p.Sku.Contains(keyword));
-            }
-
-            // 3. Lọc theo nhóm hàng (Nếu có chọn)
-            if (categoryId > 0)
-            {
-                query = query.Where(p => p.CategoryId == categoryId);
-            }
-
-            // 4. Tính tổng số bản ghi (Để phía Client biết mà chia trang)
-            int totalItems = await query.CountAsync();
-
-            // 5. Phân trang & Thực thi truy vấn (Lúc này mới gọi xuống DB)
-            var products = await query
-                .OrderByDescending(p => p.Id) // Sắp xếp sản phẩm mới nhất lên đầu
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            // 6. Trả về kết quả chuẩn
-            return Ok(new
-            {
-                TotalItems = totalItems,
-                Page = page,
-                PageSize = pageSize,
-                Data = products
-            });
+            return Ok(new { Message = "Nhập kho thành công", NewQuantity = inventory.Quantity });
         }
     }
 }

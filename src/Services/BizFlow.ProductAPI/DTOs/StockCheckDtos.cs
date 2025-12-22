@@ -1,18 +1,19 @@
 namespace BizFlow.ProductAPI.DTOs
 {
-    // Gói tin bên Order gửi sang hỏi
+    // Dữ liệu ông C gửi sang để hỏi kho
     public class CheckStockRequest
     {
         public int ProductId { get; set; }
-        public int UnitId { get; set; } // Mua theo đơn vị nào (VD: Tấn)
-        public double Quantity { get; set; } // Số lượng muốn mua
+        public int UnitId { get; set; } // ID của đơn vị (ví dụ: Mua theo Tấn hay theo Bao)
+        public int Quantity { get; set; } // Số lượng khách mua
     }
 
-    // Gói tin Kho trả lời
+    // Kết quả mình trả về cho ông C
     public class CheckStockResult
     {
         public int ProductId { get; set; }
-        public bool IsEnough { get; set; } // Đủ hàng hay không
-        public string Message { get; set; }= string.Empty; // Lý do (VD: Chỉ còn 40 Bao)
+        public bool IsEnough { get; set; } // True = Đủ hàng
+        public string Message { get; set; }
+        public decimal UnitPrice { get; set; } // Kèm giá luôn để bên kia khỏi hỏi lại
     }
 }

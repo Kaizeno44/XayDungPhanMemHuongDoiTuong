@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BizFlow.ProductAPI.Migrations
 {
     [DbContext(typeof(ProductDbContext))]
-    [Migration("20251221092221_RebuildProductSchema")]
-    partial class RebuildProductSchema
+    [Migration("20251222042851_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

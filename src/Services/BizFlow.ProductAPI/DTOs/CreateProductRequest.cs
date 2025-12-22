@@ -1,35 +1,27 @@
-using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace BizFlow.ProductAPI.DTOs
 {
     public class CreateProductRequest
     {
-        [Required]
-        public string Name { get; set; } = string.Empty;
-
-        [Required]
-        public string Sku { get; set; } = string.Empty;
-
+        public string Name { get; set; }
+        public string Sku { get; set; }
+        public string ImageUrl { get; set; }
+        public string Description { get; set; }
         public int CategoryId { get; set; }
-
-        public string? ImageUrl { get; set; }
-        public string? Description { get; set; }
-
-        // --- CÁC TRƯỜNG MỚI (Logic 4 bảng) ---
-
-        [Required]
-        public string BaseUnitName { get; set; } = string.Empty; // VD: Bao
-
-        public decimal BasePrice { get; set; } // Giá bán lẻ
-
-        public double InitialStock { get; set; } // Tồn kho ban đầu
-
-        public List<ProductUnitDto> OtherUnits { get; set; } = new List<ProductUnitDto>();
+        
+        // Đơn vị tính gốc (ví dụ: Viên, Cái)
+        public string BaseUnitName { get; set; }
+        public int InitialStock { get; set; }
+        public decimal BasePrice { get; set; }
+        
+        // Danh sách đơn vị quy đổi (ví dụ: Thùng, Hộp)
+        public List<ProductUnitDto>? OtherUnits { get; set; }
     }
 
     public class ProductUnitDto
     {
-        public string UnitName { get; set; } = string.Empty;
+        public string UnitName { get; set; }
         public double ConversionValue { get; set; }
         public decimal Price { get; set; }
     }

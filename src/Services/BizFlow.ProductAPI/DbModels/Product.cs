@@ -8,30 +8,25 @@ namespace BizFlow.ProductAPI.DbModels
     {
         [Key]
         public int Id { get; set; }
-
-        [ForeignKey("Category")]
         public int CategoryId { get; set; }
+        [ForeignKey("CategoryId")]
+        public Category Category { get; set; }
 
-        [Required]
-        [MaxLength(200)]
-        public string Name { get; set; } = string.Empty;
+        [Required, MaxLength(200)]
+        public string Name { get; set; } = string.Empty; // VD: Xi măng Hà Tiên
 
-        [MaxLength(50)]
-        public string Sku { get; set; } = string.Empty; // Mã vạch
+        [Required, MaxLength(50)]
+        public string Sku { get; set; } = string.Empty; // VD: XM_HT_01
 
-        [Required]
-        [MaxLength(20)]
-        public string BaseUnit { get; set; } = string.Empty; // Đơn vị gốc (VD: Cái)
+        public string BaseUnit { get; set; } = string.Empty; // VD: Kg (Đơn vị gốc để tính kho)
 
-        public decimal StockQuantity { get; set; } = 0; // Tồn kho theo BaseUnit
+        public string? ImageUrl { get; set; }
+        public string? Description { get; set; }
+        
+        public bool IsActive { get; set; } = true; // 👈 Mới thêm
 
-        public bool IsActive { get; set; } = true;
-
-        // Navigation Properties (Để nối bảng)
-        public Category Category { get; set; } = null!;
+        // --- LIÊN KẾT ---
+        public Inventory Inventory { get; set; } 
         public ICollection<ProductUnit> ProductUnits { get; set; } = new List<ProductUnit>();
-        public Inventory Inventory { get; set; } = null!;
-        [Column(TypeName = "decimal(18,2)")]
-        public decimal Price { get; set; }
     }
 }

@@ -1,12 +1,12 @@
 using BizFlow.OrderAPI.Data;
-using BizFlow.OrderAPI.DbModels;
+using BizFlow.OrderAPI.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace BizFlow.OrderAPI.Controllers
 {
-    [Route("api/customers")]
     [ApiController]
+    [Route("api/[controller]")]
     public class CustomersController : ControllerBase
     {
         private readonly OrderDbContext _context;
@@ -16,36 +16,36 @@ namespace BizFlow.OrderAPI.Controllers
             _context = context;
         }
 
-        // API: Thêm khách hàng mới
-        [HttpPost]
-        public async Task<IActionResult> CreateCustomer([FromBody] CreateCustomerRequest request)
+        [HttpGet("{id}/history")]
+        public async Task<IActionResult> GetHistory(Guid id)
         {
-            // 1. Giả lập mã cửa hàng (Cho giống với bên OrdersController)
-            var currentStoreId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+            var totalDebt = await _context.DebtLogs
+                .Where(d => d.CustomerId == id)
+                .SumAsync(d => d.Amount);
 
-            // 2. Tạo đối tượng khách hàng
-            var newCustomer = new Customer
+            var orders = await _context.Orders
+                .Where(o => o.CustomerId == id)
+                .OrderByDescending(o => o.OrderDate)
+                .Select(o => new OrderHistoryItemDto
+                {
+                    Id = o.Id,
+                    OrderCode = o.OrderCode,
+                    TotalAmount = o.TotalAmount,
+                    Status = o.Status,
+                    OrderDate = o.OrderDate,
+                    PaymentMethod = o.PaymentMethod
+                })
+                .ToListAsync();
+
+            var response = new CustomerHistoryResponse
             {
-                Id = Guid.NewGuid(),
-                StoreId = currentStoreId, // 👈 Quan trọng: Đánh dấu khách này thuộc cửa hàng của bạn
-                FullName = request.FullName,
-                PhoneNumber = request.PhoneNumber,
-                Address = request.Address,
-                CurrentDebt = 0
+                CustomerId = id,
+                CurrentDebt = totalDebt,
+                OrderCount = orders.Count,
+                Orders = orders
             };
 
-            _context.Customers.Add(newCustomer);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { Success = true, Message = "Thêm khách hàng thành công!", CustomerId = newCustomer.Id });
+            return Ok(response);
         }
-    }
-
-    // Class hứng dữ liệu gửi lên (DTO)
-    public class CreateCustomerRequest
-    {
-        public string FullName { get; set; } = "";
-        public string PhoneNumber { get; set; } = "";
-        public string Address { get; set; } = "";
     }
 }

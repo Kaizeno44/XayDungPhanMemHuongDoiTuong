@@ -9,14 +9,14 @@ namespace BizFlow.ProductAPI.DbModels
         [Key]
         public int Id { get; set; }
 
-        [Required]
-        [MaxLength(100)]
-        public string Name { get; set; } = string.Empty;
+        [Required, MaxLength(100)]
+        public string Name { get; set; } = string.Empty; // VD: Vật liệu thô
 
-        [MaxLength(255)]
-        public string Description { get; set; } = string.Empty;
+        [MaxLength(50)]
+        public string Code { get; set; } = string.Empty; // VD: VLXD
 
-        // Quan hệ: 1 Category có nhiều Product
-        // public ICollection<Product> Products { get; set; }
+        public string? Description { get; set; } // 👈 Mới thêm
+
+        public bool IsActive { get; set; } = true; // 👈 Mới thêm (Để ẩn hiện danh mục)
     }
 }

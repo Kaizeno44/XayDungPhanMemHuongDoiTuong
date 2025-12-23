@@ -30,10 +30,16 @@ namespace BizFlow.ProductAPI.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Description")
+                    b.Property<string>("Code")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -47,19 +53,25 @@ namespace BizFlow.ProductAPI.Migrations
 
             modelBuilder.Entity("BizFlow.ProductAPI.DbModels.Inventory", b =>
                 {
-                    b.Property<int>("ProductId")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("LastUpdated")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<decimal>("MinStockLevel")
-                        .HasColumnType("decimal(65,30)");
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
 
-                    b.Property<decimal>("Quantity")
-                        .HasColumnType("decimal(65,30)");
+                    b.Property<double>("Quantity")
+                        .HasColumnType("double");
 
-                    b.HasKey("ProductId");
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId")
+                        .IsUnique();
 
                     b.ToTable("Inventories");
                 });
@@ -74,11 +86,16 @@ namespace BizFlow.ProductAPI.Migrations
 
                     b.Property<string>("BaseUnit")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("CategoryId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -88,16 +105,10 @@ namespace BizFlow.ProductAPI.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
-
-                    b.Property<decimal>("StockQuantity")
-                        .HasColumnType("decimal(65,30)");
 
                     b.HasKey("Id");
 
@@ -114,22 +125,22 @@ namespace BizFlow.ProductAPI.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("ConversionRate")
-                        .HasColumnType("int");
+                    b.Property<double>("ConversionValue")
+                        .HasColumnType("double");
 
-                    b.Property<bool>("IsDefault")
+                    b.Property<bool>("IsBaseUnit")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<decimal>("Price")
-                        .HasColumnType("decimal(65,30)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("ProductId")
                         .HasColumnType("int");
 
                     b.Property<string>("UnitName")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.HasKey("Id");
 

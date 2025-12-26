@@ -11,7 +11,7 @@ namespace BizFlow.OrderAPI.DTOs
     {
         public int ProductId { get; set; }
         public bool IsEnough { get; set; }
-        public decimal UnitPrice { get; set; }
         public required string Message { get; set; }
+        public decimal UnitPrice { get; set; }
     }
 }

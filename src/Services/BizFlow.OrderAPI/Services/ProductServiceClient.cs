@@ -24,8 +24,10 @@ namespace BizFlow.OrderAPI.Services
 
             response.EnsureSuccessStatusCode();
 
+#pragma warning disable CS8603 // Possible null reference return.
             return await response.Content
                 .ReadFromJsonAsync<List<CheckStockResult>>();
+#pragma warning restore CS8603 // Possible null reference return.
         }
 
         // ✅ TRỪ KHO (ĐÚNG API PRODUCT)

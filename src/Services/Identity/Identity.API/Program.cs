@@ -11,13 +11,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 });
 
 // 2. Cấu hình CORS
+// 2. Cấu hình CORS (SỬA LẠI ĐOẠN NÀY)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins("http://localhost:3000") // 👈 CHỈ ĐỊNH RÕ FRONTEND CỦA BẠN
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials(); // 👈 BẮT BUỘC PHẢI CÓ ĐỂ GỬI COOKIE/TOKEN
     });
 });
 
@@ -32,6 +34,15 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    // Tự động update database nếu chưa update
+    await context.Database.MigrateAsync(); 
+    // Chạy hàm seed
+    await IdentityDataSeeder.SeedAsync(context);
+}
 
 // --- PIPELINE ---
 

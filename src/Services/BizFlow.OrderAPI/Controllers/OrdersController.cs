@@ -3,7 +3,8 @@ using BizFlow.OrderAPI.DbModels;
 using BizFlow.OrderAPI.DTOs;
 using BizFlow.OrderAPI.Services;
 using Microsoft.AspNetCore.Mvc;
-
+using BizFlow.OrderAPI.Hubs; // 1. Thêm namespace chứa Hub
+using Microsoft.AspNetCore.SignalR; // 2. Thêm thư viện SignalR
 namespace BizFlow.OrderAPI.Controllers
 {
     [ApiController]
@@ -12,13 +13,15 @@ namespace BizFlow.OrderAPI.Controllers
     {
         private readonly OrderDbContext _context;
         private readonly ProductServiceClient _productService;
-
+        private readonly IHubContext<NotificationHub> _hubContext;
         public OrdersController(
             OrderDbContext context,
-            ProductServiceClient productService)
+            ProductServiceClient productService,
+            IHubContext<NotificationHub> hubContext) // 4. Inject HubContext vào Constructor
         {
             _context = context;
             _productService = productService;
+            _hubContext = hubContext;
         }
 
         [HttpPost]
@@ -107,7 +110,24 @@ namespace BizFlow.OrderAPI.Controllers
                     item.UnitId,
                     item.Quantity);
             }
-
+            // 🔥 6️⃣ SIGNALR: BẮN THÔNG BÁO "TING TING" (PHẦN MỚI THÊM)
+            // ==========================================================
+            try 
+            {
+                // Gửi tin nhắn đến nhóm "Admins" (Những người đang mở trang Web Admin)
+                await _hubContext.Clients.Group("Admins").SendAsync("ReceiveOrderNotification", new 
+                { 
+                    Message = $"🔔 Ting ting! Đơn mới {order.OrderCode}", 
+                    TotalAmount = order.TotalAmount,
+                    Time = DateTime.Now.ToString("HH:mm:ss")
+                });
+            }
+            catch (Exception ex)
+            {
+                // Nếu lỗi SignalR thì chỉ log ra console, KHÔNG ĐƯỢC làm lỗi đơn hàng
+                Console.WriteLine($"--> Lỗi gửi thông báo SignalR: {ex.Message}");
+            }
+            // ==========================================================
             return Ok(new
             {
                 Message = "Tạo đơn thành công",

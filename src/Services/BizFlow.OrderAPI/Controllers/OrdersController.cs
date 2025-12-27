@@ -3,6 +3,7 @@ using BizFlow.OrderAPI.DbModels;
 using BizFlow.OrderAPI.DTOs;
 using BizFlow.OrderAPI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore; // Add this line
 using BizFlow.OrderAPI.Hubs; // 1. Thêm namespace chứa Hub
 using Microsoft.AspNetCore.SignalR; // 2. Thêm thư viện SignalR
 namespace BizFlow.OrderAPI.Controllers
@@ -133,6 +134,20 @@ namespace BizFlow.OrderAPI.Controllers
                 Message = "Tạo đơn thành công",
                 OrderId = order.Id
             });
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Order>>> GetOrders([FromQuery] Guid? storeId)
+        {
+            IQueryable<Order> query = _context.Orders.Include(o => o.OrderItems);
+
+            if (storeId.HasValue)
+            {
+                query = query.Where(o => o.StoreId == storeId.Value);
+            }
+
+            var orders = await query.OrderByDescending(o => o.OrderDate).ToListAsync();
+            return Ok(orders);
         }
     }
 }

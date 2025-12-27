@@ -2,6 +2,9 @@
 
 import { useEffect } from "react";
 import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
+import EventEmitter from 'events';
+
+export const signalREventEmitter = new EventEmitter();
 
 export default function SignalRListener() {
   useEffect(() => {
@@ -23,7 +26,8 @@ export default function SignalRListener() {
     // 3. Lắng nghe sự kiện
     connection.on("ReceiveOrderNotification", (data) => {
       console.log("🔔 TING TING:", data);
-      alert(`🔔 TING TING! Đơn mới từ: ${data.message} - 💰 ${data.totalAmount}`);
+      // alert(`🔔 TING TING! Đơn mới từ: ${data.message} - 💰 ${data.totalAmount}`); // Remove alert for better UX
+      signalREventEmitter.emit('newOrder', data); // Emit event for other components
     });
 
     // Cleanup khi component bị hủy

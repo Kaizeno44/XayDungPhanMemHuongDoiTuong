@@ -1,9 +1,10 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { signalREventEmitter } from '../SignalRListener'; // Import the event emitter
 
-const data = [
+const initialData = [
   { name: 'Jan', revenue: 4000 },
   { name: 'Feb', revenue: 3000 },
   { name: 'Mar', revenue: 5000 },
@@ -19,6 +20,28 @@ const data = [
 ];
 
 const RevenueChart = () => {
+  const [data, setData] = useState(initialData);
+
+  useEffect(() => {
+    const handleNewOrder = (newOrder) => {
+      const currentMonthIndex = new Date().getMonth(); // 0 for Jan, 1 for Feb, etc.
+      setData(prevData => {
+        const newData = [...prevData];
+        newData[currentMonthIndex] = {
+          ...newData[currentMonthIndex],
+          revenue: newData[currentMonthIndex].revenue + newOrder.totalAmount / 1000000 // Assuming totalAmount is in VND, convert to millions
+        };
+        return newData;
+      });
+    };
+
+    signalREventEmitter.on('newOrder', handleNewOrder);
+
+    return () => {
+      signalREventEmitter.off('newOrder', handleNewOrder);
+    };
+  }, []);
+
   return (
     <div style={{ width: '100%', height: 400 }}>
       <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Revenue Overview</h2>

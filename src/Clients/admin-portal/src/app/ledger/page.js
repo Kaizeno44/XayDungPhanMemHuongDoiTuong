@@ -6,47 +6,73 @@ import Cookies from "js-cookie";
 import Link from "next/link";
 import { saveAs } from 'file-saver';
 
-const accountingData = [
-  { id: 1, date: '2025-12-01', description: 'Initial Capital', type: 'Credit', amount: 100000000, balance: 100000000 },
-  { id: 2, date: '2025-12-02', description: 'Sales Revenue', type: 'Credit', amount: 5000000, balance: 105000000 },
-  { id: 3, date: '2025-12-03', description: 'Office Supplies', type: 'Debit', amount: 1000000, balance: 104000000 },
-  { id: 4, date: '2025-12-04', description: 'Sales Revenue', type: 'Credit', amount: 7000000, balance: 111000000 },
-  { id: 5, date: '2025-12-05', description: 'Rent Payment', type: 'Debit', amount: 15000000, balance: 96000000 },
-];
-
 export default function LedgerPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [ledgerEntries, setLedgerEntries] = useState(accountingData); // Using mock data for now
+  const [ledgerEntries, setLedgerEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Temporarily bypass authentication for demonstration
-    setUser({ name: "Admin (Person A)" });
-    // const token = Cookies.get("accessToken");
-    // if (!token) {
-    //   router.push("/");
-    // } else {
-    //     setUser({ name: "Admin (Person A)" }); 
-    //     // In a real application, you would fetch data here:
-    //     // fetchAccountingData();
-    // }
-  }, []); // Removed router from dependency array as it's not used in the bypassed logic
+    const token = Cookies.get("accessToken");
 
-  // Placeholder for fetching real accounting data
-  const fetchAccountingData = async () => {
-    try {
-      // TODO: Replace with actual Accounting API endpoint
-      const response = await fetch("/api/accounting-data"); 
-      const data = await response.json();
-      setLedgerEntries(data);
-    } catch (error) {
-      console.error("Error fetching accounting data:", error);
+    if (!token) {
+      router.push("/login");
+      return;
     }
-  };
+
+    setUser({ name: "Admin (Person A)" }); // Assuming user is authenticated
+
+    const fetchOrderData = async () => {
+      try {
+        // TODO: Replace with dynamic storeId if applicable
+        const response = await fetch("http://localhost:5103/api/Orders", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Không thể tải dữ liệu đơn hàng.");
+        }
+
+        const orders = await response.json();
+        
+        // Transform order data to ledger entry format (Sổ S1 - simplified)
+        let balance = 0;
+        const transformedEntries = orders.map((order, index) => {
+          const revenue = order.totalAmount;
+          // For Sổ S1, we might need to differentiate between revenue and deductions.
+          // For now, we'll treat totalAmount as revenue (Credit).
+          balance += revenue;
+
+          return {
+            id: order.id,
+            date: new Date(order.orderDate).toLocaleDateString('vi-VN'),
+            description: `Đơn hàng ${order.orderCode}`,
+            type: 'Credit', // Assuming all orders are revenue for now
+            amount: revenue,
+            balance: balance,
+            orderItems: order.orderItems // Keep order items for potential detailed view
+          };
+        });
+        setLedgerEntries(transformedEntries);
+      } catch (err) {
+        console.error("Error fetching order data:", err);
+        setError("Không thể tải dữ liệu đơn hàng từ Server.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrderData();
+  }, [router]);
 
   const handleLogout = () => {
     Cookies.remove("accessToken");
-    router.push("/");
+    router.push("/login"); // Ensure it redirects to /login
   };
 
   const handleExportPdf = async () => {
@@ -143,28 +169,48 @@ export default function LedgerPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {ledgerEntries.map((entry) => (
-                <tr key={entry.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {entry.id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {entry.date}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {entry.description}
-                  </td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-sm ${entry.type === 'Credit' ? 'text-green-600' : 'text-red-600'}`}>
-                    {entry.type}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                    {entry.amount.toLocaleString('vi-VN')} VND
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                    {entry.balance.toLocaleString('vi-VN')} VND
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
+                    ⏳ Đang tải dữ liệu sổ quỹ...
                   </td>
                 </tr>
-              ))}
+              ) : error ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-4 text-center text-red-500 bg-red-50">
+                    ⚠️ {error}
+                  </td>
+                </tr>
+              ) : ledgerEntries.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
+                    Không có dữ liệu sổ quỹ nào.
+                  </td>
+                </tr>
+              ) : (
+                ledgerEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {entry.id}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {entry.date}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {entry.description}
+                    </td>
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${entry.type === 'Credit' ? 'text-green-600' : 'text-red-600'}`}>
+                      {entry.type}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                      {entry.amount.toLocaleString('vi-VN')} VND
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                      {entry.balance.toLocaleString('vi-VN')} VND
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

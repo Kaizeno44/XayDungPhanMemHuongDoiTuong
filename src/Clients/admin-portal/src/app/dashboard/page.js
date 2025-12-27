@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import Link from "next/link";
+import RevenueChart from "./RevenueChart";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -111,6 +112,21 @@ export default function Dashboard() {
               title="Cấu hình Hệ thống"
               desc="Thiết lập gói cước & tham số"
             />
+            {/* Card 2: Báo cáo Doanh thu (Ví dụ gắn link sau này) */}
+            <Link href="/ledger">
+                <div className="bg-white p-6 rounded shadow hover:shadow-lg cursor-pointer border-l-4 border-green-500 h-full">
+                    <h3 className="text-lg font-bold mb-2">💰 Sổ Quỹ (Ledger)</h3>
+                    <p className="text-gray-500 text-sm">Xem dữ liệu kế toán & xuất PDF</p>
+                </div>
+            </Link>
+
+            {/* Card 3: Cấu hình */}
+            <Link href="/settings">
+                <div className="bg-white p-6 rounded shadow hover:shadow-lg cursor-pointer border-l-4 border-purple-500 h-full">
+                    <h3 className="text-lg font-bold mb-2">⚙️ Cấu hình</h3>
+                    <p className="text-gray-500 text-sm">Thiết lập chung cho hệ thống</p>
+                </div>
+            </Link>
           </div>
         </div>
 
@@ -178,6 +194,11 @@ export default function Dashboard() {
               </table>
             )}
           </div>
+        </div>
+
+        {/* Revenue Chart Section */}
+        <div className="mt-8">
+          <RevenueChart />
         </div>
       </main>
     </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import api from "@/utils/api";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("123456"); // Mật khẩu mặc định
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    // Temporarily bypass login for demonstration if an environment variable is set
+    if (process.env.NEXT_PUBLIC_BYPASS_LOGIN === 'true') {
+      router.push("/dashboard");
+    }
+  }, [router]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

@@ -44,7 +44,7 @@ app.UseCors("AllowAll"); // <--- 3. Thêm dòng này để kích hoạt CORS
 
 app.MapHub<BizFlow.OrderAPI.Hubs.NotificationHub>("/hubs/notifications");
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // Đã comment để đảm bảo API phục vụ qua HTTP
 app.UseAuthorization();
 app.MapControllers();
 

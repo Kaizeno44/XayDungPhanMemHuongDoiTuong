@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:async'; // Cần cho Timeout
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'core/config/api_config.dart'; // Import config chuẩn
 import 'cart_provider.dart';
 import 'models.dart';
 import 'order_history_screen.dart';
@@ -9,7 +11,7 @@ import 'order_history_screen.dart';
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({
     super.key,
-    required this.customerId, // Giữ lại để tương thích, dù ta sẽ fetch lại list
+    required this.customerId,
     required this.storeId,
   });
 
@@ -21,61 +23,71 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  // Store ID lấy từ dữ liệu thực tế của bạn
-  final String storeId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
-
-  // Biến lưu danh sách khách hàng từ API
+  // Biến lưu danh sách khách hàng
   List<Customer> customers = [];
 
   // Các biến trạng thái
   String? selectedCustomerId;
   String selectedPaymentMethod = "Cash";
-  bool isLoadingOrder = false; // Loading khi tạo đơn
-  bool isLoadingCustomers = true; // Loading khi tải danh sách khách
+  bool isLoadingOrder = false;
+  bool isLoadingCustomers = true;
 
   @override
   void initState() {
     super.initState();
-    // Gọi API lấy khách hàng ngay khi màn hình mở lên
     _fetchCustomers();
   }
 
-  // --- 1. HÀM LẤY DANH SÁCH KHÁCH HÀNG TỪ API ---
+  // --- 1. LẤY KHÁCH HÀNG (AN TOÀN & CHUẨN CONFIG) ---
   Future<void> _fetchCustomers() async {
-    final url = Uri.parse("http://10.0.2.2:5103/api/Customers");
+    // Sử dụng đường dẫn từ ApiConfig (Port 5103)
+    final url = Uri.parse(ApiConfig.customers);
 
     try {
-      final response = await http.get(url);
+      final response = await http
+          .get(url, headers: ApiConfig.headers)
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
+        // 1. Giải mã JSON an toàn (dynamic)
+        final dynamic decodedData = jsonDecode(response.body);
 
-        setState(() {
-          // Map dữ liệu JSON sang Model Customer
-          customers = data
-              .map(
-                (json) => Customer(
-                  id: json['id'],
-                  // Lưu ý: Backend trả về 'fullName', Model của bạn là 'name'
-                  name:
-                      json['fullName'] ?? json['name'] ?? "Khách hàng ẩn danh",
-                ),
-              )
-              .toList();
-
-          isLoadingCustomers = false;
-        });
+        // 2. Kiểm tra cấu trúc dữ liệu để tránh Crash
+        if (decodedData is List) {
+          setState(() {
+            customers = decodedData
+                .map(
+                  (json) => Customer(
+                    // Ép kiểu ID về String để an toàn
+                    id: json['id'].toString(),
+                    // Ưu tiên fullName, nếu không có thì lấy name, fallback "Ẩn danh"
+                    name:
+                        json['fullName'] ??
+                        json['name'] ??
+                        "Khách hàng ẩn danh",
+                  ),
+                )
+                .toList();
+            isLoadingCustomers = false;
+          });
+        } else {
+          // Nếu API trả về Object (ví dụ báo lỗi hoặc wrap data), log lại và không crash
+          debugPrint("⚠️ API trả về không phải List: $decodedData");
+          if (mounted) _showSnackBar("Dữ liệu khách hàng sai định dạng.");
+          setState(() => isLoadingCustomers = false);
+        }
       } else {
         _showSnackBar("Lỗi tải khách hàng: ${response.statusCode}");
         setState(() => isLoadingCustomers = false);
       }
     } catch (e) {
-      _showSnackBar("Không thể kết nối Server để lấy khách hàng.");
+      debugPrint("🔴 Lỗi kết nối: $e");
+      _showSnackBar("Không thể kết nối Server.");
       setState(() => isLoadingCustomers = false);
     }
   }
 
-  // --- 2. HÀM TẠO ĐƠN HÀNG ---
+  // --- 2. TẠO ĐƠN HÀNG (CHUẨN CONFIG) ---
   Future<void> createOrder(CartProvider cart) async {
     if (selectedCustomerId == null) {
       _showSnackBar("Vui lòng chọn khách hàng");
@@ -84,34 +96,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() => isLoadingOrder = true);
 
-    const String apiUrl = "http://10.0.2.2:5103/api/Orders";
+    // Sử dụng đường dẫn từ ApiConfig
+    final url = Uri.parse(ApiConfig.orders);
 
     final requestBody = {
       "customerId": selectedCustomerId,
-      "storeId": storeId,
+      "storeId": widget.storeId, // Dùng storeId truyền vào từ widget
       "paymentMethod": selectedPaymentMethod,
       "items": cart.items.map((e) => e.toJson()).toList(),
     };
 
     try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(requestBody),
-      );
+      final response = await http
+          .post(
+            url,
+            headers: ApiConfig.headers, // Dùng header chuẩn
+            body: jsonEncode(requestBody),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         cart.clearCart();
         if (mounted) _showSuccessDialog();
       } else {
-        // Parse lỗi đẹp hơn
+        // Parse lỗi từ Server trả về cho đẹp
         String errorMsg = response.body;
         try {
           final errJson = jsonDecode(response.body);
           errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
         } catch (_) {}
-
-        if (mounted) _showSnackBar("Lỗi: $errorMsg");
+        if (mounted) _showSnackBar("Lỗi tạo đơn: $errorMsg");
       }
     } catch (e) {
       if (mounted) _showSnackBar("Lỗi kết nối: $e");
@@ -120,7 +134,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // Hàm tiện ích hiển thị thông báo
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(
       context,
@@ -137,7 +150,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              // Đóng dialog và quay về màn hình trước (hoặc Home)
               Navigator.of(ctx).pop(); // Đóng Dialog
               Navigator.of(ctx).pop(); // Quay về màn hình trước
             },

@@ -16,4 +16,17 @@ namespace BizFlow.ProductAPI.DTOs
         public string Message { get; set; }
         public decimal UnitPrice { get; set; } // Kèm giá luôn để bên kia khỏi hỏi lại
     }
+
+    // DTO wrapper để nhận danh sách yêu cầu kiểm tra tồn kho
+    public class CheckStockRequestWrapperDto
+    {
+        public List<CheckStockRequest> Requests { get; set; } = new List<CheckStockRequest>();
+    }
+
+    // DTO đơn giản cho kết quả kiểm tra tồn kho (dùng cho mobile)
+    public class SimpleCheckStockResultDto
+    {
+        public bool IsEnough { get; set; }
+        public string Message { get; set; }
+    }
 }

@@ -98,12 +98,12 @@ namespace BizFlow.ProductAPI.Controllers
             });
         }
 
-        // 2.2 Kiểm tra tồn kho (Read-only)
+        // 2.2 Kiểm tra tồn kho (Read-only) - Đã sửa để chấp nhận CheckStockRequestWrapperDto
         [HttpPost("check-stock")]
-        public async Task<IActionResult> CheckStock([FromBody] List<CheckStockRequest> requests)
+        public async Task<IActionResult> CheckStock([FromBody] CheckStockRequestWrapperDto wrapper)
         {
             var results = new List<CheckStockResult>();
-            var productIds = requests.Select(r => r.ProductId).Distinct().ToList();
+            var productIds = wrapper.Requests.Select(r => r.ProductId).Distinct().ToList();
 
             var products = await _context.Products
                 .Include(p => p.Inventory)
@@ -111,7 +111,7 @@ namespace BizFlow.ProductAPI.Controllers
                 .Where(p => productIds.Contains(p.Id))
                 .ToListAsync();
 
-            foreach (var req in requests)
+            foreach (var req in wrapper.Requests)
             {
                 var product = products.FirstOrDefault(p => p.Id == req.ProductId);
                 if (product == null)

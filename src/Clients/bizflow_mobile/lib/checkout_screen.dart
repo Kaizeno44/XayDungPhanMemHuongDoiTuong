@@ -34,7 +34,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     setState(() => isLoading = true);
 
-    // Dùng 5103 như bạn đã sửa (Chuẩn!)
+    // Đã thay đổi cổng từ 5003 sang 5103 để khớp với cấu hình ApiGateway
     const String apiUrl = "http://10.0.2.2:5103/api/Orders";
 
     final requestBody = {

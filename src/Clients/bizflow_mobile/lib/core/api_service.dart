@@ -1,0 +1,75 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../models.dart'; // Import các model đã định nghĩa
+
+class ApiService {
+  static const String _baseUrl = 'http://10.0.2.2:5000/api'; // API Gateway URL (For Android Emulator)
+  // Đã thay đổi từ HTTPS sang HTTP để giải quyết lỗi chứng chỉ SSL trong môi trường phát triển.
+  // Nếu chạy trên thiết bị vật lý, cần thay đổi thành IP của máy tính host, ví dụ: 'http://192.168.1.x:5000/api'
+  // Nếu chạy trên Web, có thể dùng lại 'http://localhost:5000/api'
+
+  Future<List<Product>> getProducts({String? keyword, int? categoryId, int page = 1, int pageSize = 10}) async {
+    final Map<String, String> queryParams = {
+      'page': page.toString(),
+      'pageSize': pageSize.toString(),
+    };
+    if (keyword != null && keyword.isNotEmpty) {
+      queryParams['keyword'] = keyword;
+    }
+    if (categoryId != null && categoryId > 0) {
+      queryParams['categoryId'] = categoryId.toString();
+    }
+
+    final uri = Uri.parse('$_baseUrl/products').replace(queryParameters: queryParams);
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      final List<dynamic> productJson = data['data'];
+      return productJson.map((json) => Product.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load products: ${response.statusCode} ${response.body}');
+    }
+  }
+
+  Future<ProductPriceResult> getProductPrice(int productId, int unitId) async {
+    final uri = Uri.parse('$_baseUrl/products/$productId/price?unitId=$unitId');
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      return ProductPriceResult.fromJson(json.decode(response.body));
+    } else {
+      throw Exception('Failed to load product price: ${response.statusCode} ${response.body}');
+    }
+  }
+
+  Future<SimpleCheckStockResult> simpleCheckStock(int productId, int unitId, double quantity) async {
+    final uri = Uri.parse('$_baseUrl/products/check-stock');
+    final requestBody = {
+      'requests': [
+        {
+          'productId': productId,
+          'unitId': unitId,
+          'quantity': quantity.toInt(), // Chuyển đổi quantity sang int
+        }
+      ]
+    };
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(requestBody), // Gửi đối tượng wrapper
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> responseList = json.decode(response.body);
+      if (responseList.isNotEmpty) {
+        // Lấy kết quả đầu tiên từ danh sách (vì chúng ta chỉ gửi một yêu cầu)
+        return SimpleCheckStockResult.fromJson(responseList.first);
+      } else {
+        throw Exception('Failed to check stock: Empty response list');
+      }
+    } else {
+      throw Exception('Failed to check stock: ${response.statusCode} ${response.body}');
+    }
+  }
+}

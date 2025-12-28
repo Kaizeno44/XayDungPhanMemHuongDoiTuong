@@ -20,14 +20,29 @@ builder.Services.AddHttpClient<ProductServiceClient>(client =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSignalR();
 
+// --- THÊM ĐOẠN NÀY ---
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder => builder
+            .WithOrigins("http://localhost:3000") // 🔥 QUAN TRỌNG: Chấp nhận mọi nguồn (HTML file, localhost...)
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()); // Bắt buộc phải có dòng này với SignalR
+});
+
+;
 var app = builder.Build();
-
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+app.UseCors("AllowAll"); // <--- 3. Thêm dòng này để kích hoạt CORS
+
+app.MapHub<BizFlow.OrderAPI.Hubs.NotificationHub>("/hubs/notifications");
 
 app.UseHttpsRedirection();
 app.UseAuthorization();

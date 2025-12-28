@@ -1,3 +1,4 @@
+
 public class CustomerHistoryResponse
 {
     public Guid CustomerId { get; set; }

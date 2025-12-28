@@ -61,12 +61,15 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      final List<dynamic> responseList = json.decode(response.body);
-      if (responseList.isNotEmpty) {
-        // Lấy kết quả đầu tiên từ danh sách (vì chúng ta chỉ gửi một yêu cầu)
-        return SimpleCheckStockResult.fromJson(responseList.first);
+      final dynamic decodedBody = json.decode(response.body);
+      if (decodedBody is List && decodedBody.isNotEmpty) {
+        // Nếu backend trả về một danh sách, lấy phần tử đầu tiên
+        return SimpleCheckStockResult.fromJson(decodedBody.first as Map<String, dynamic>);
+      } else if (decodedBody is Map<String, dynamic>) {
+        // Nếu backend trả về một đối tượng duy nhất (trường hợp dự phòng)
+        return SimpleCheckStockResult.fromJson(decodedBody);
       } else {
-        throw Exception('Failed to check stock: Empty response list');
+        throw Exception('Failed to check stock: Unexpected response format');
       }
     } else {
       throw Exception('Failed to check stock: ${response.statusCode} ${response.body}');

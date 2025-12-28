@@ -1,17 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'cart_provider.dart';
-import 'models.dart';
-import 'cart_screen.dart';
+import 'dart:math'; // Để random màu sắc cho đẹp
 
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import 'cart_provider.dart';
 import 'models.dart';
 import 'cart_screen.dart';
-import 'core/api_service.dart';
+import 'product_service.dart'; // Import service vừa tạo
 import 'product_detail_screen.dart'; // Import ProductDetailScreen
 
 class ProductListScreen extends StatefulWidget {
@@ -22,10 +17,10 @@ class ProductListScreen extends StatefulWidget {
 }
 
 class _ProductListScreenState extends State<ProductListScreen> {
-  final ApiService _apiService = ApiService();
-  List<Product> _products = [];
-  bool _isLoading = true;
-  String? _error;
+  final ProductService _productService = ProductService();
+  List<Product> products = [];
+  bool isLoading = true;
+  String? errorMessage;
 
   @override
   void initState() {
@@ -34,24 +29,40 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> _fetchProducts() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
     try {
-      final products = await _apiService.getProducts();
+      final fetchedProducts = await _productService.getProducts();
       setState(() {
-        _products = products;
+        products = fetchedProducts;
+        isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _error = 'Failed to load products: $e';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
+        errorMessage = e.toString();
+        isLoading = false;
       });
     }
+  }
+
+  // Hàm tiện ích để tạo icon/màu giả lập cho giao diện đẹp hơn
+  Map<String, dynamic> _getProductUI(int id) {
+    final colors = [
+      Colors.blue,
+      Colors.orange,
+      Colors.green,
+      Colors.purple,
+      Colors.teal,
+    ];
+    final icons = [
+      Icons.home_work,
+      Icons.build,
+      Icons.layers,
+      Icons.construction,
+    ];
+    final random = Random(id); // Dùng ID làm seed để màu cố định cho mỗi sp
+    return {
+      'color': colors[random.nextInt(colors.length)],
+      'icon': icons[random.nextInt(icons.length)],
+    };
   }
 
   @override
@@ -107,113 +118,126 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_error!),
-                      ElevatedButton(
-                        onPressed: _fetchProducts,
-                        child: const Text('Thử lại'),
-                      ),
-                    ],
-                  ),
-                )
-              : Container(
-                  color: Colors.grey[100],
-                  child: ListView.builder(
-                    itemCount: _products.length,
-                    padding: const EdgeInsets.all(12),
-                    itemBuilder: (context, index) {
-                      final product = _products[index];
-                      final baseUnit = product.productUnits.firstWhere((unit) => unit.isBaseUnit,
-                          orElse: () => product.productUnits.first);
-                      return Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          leading: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                              image: product.imageUrl != null && product.imageUrl!.isNotEmpty
-                                  ? DecorationImage(
-                                      image: NetworkImage(product.imageUrl!),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            child: product.imageUrl == null || product.imageUrl!.isEmpty
-                                ? Icon(Icons.image, size: 30, color: Colors.grey[400])
-                                : null,
-                          ),
-                          title: Text(
-                            product.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          subtitle: Text(
-                            "${currencyFormat.format(baseUnit.price)} / ${baseUnit.unitName}",
-                            style: const TextStyle(
-                              color: Colors.red,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProductDetailScreen(product: product),
-                              ),
-                            );
-                          },
-                          trailing: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[800],
-                              shape: const CircleBorder(),
-                              padding: const EdgeInsets.all(10),
-                            ),
-                            onPressed: () {
-                              final cartItem = CartItem(
-                                productId: product.id,
-                                productName: product.name,
-                                unitId: baseUnit.id,
-                                unitName: baseUnit.unitName,
-                                price: baseUnit.price,
-                                quantity: 1,
-                              );
-                              Provider.of<CartProvider>(
-                                context,
-                                listen: false,
-                              ).addToCart(cartItem);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Đã thêm ${product.name} vào giỏ!'),
-                                  duration: const Duration(seconds: 1),
-                                ),
-                              );
-                            },
-                            child: const Icon(Icons.add, color: Colors.white),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+      body: Container(
+        color: Colors.grey[100],
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : errorMessage != null
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.red,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Lỗi: $errorMessage",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: _fetchProducts,
+                      child: const Text("Thử lại"),
+                    ),
+                  ],
                 ),
+              )
+            : ListView.builder(
+                itemCount: products.length,
+                padding: const EdgeInsets.all(12),
+                itemBuilder: (context, index) {
+                  final product = products[index];
+                  final uiProps = _getProductUI(product.id);
+                  final baseUnit = product.productUnits.firstWhere(
+                    (unit) => unit.isBaseUnit,
+                    orElse: () => product.productUnits.first,
+                  );
+
+                  return Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      leading: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: (uiProps['color'] as Color).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          uiProps['icon'],
+                          color: uiProps['color'],
+                          size: 30,
+                        ),
+                      ),
+                      title: Text(
+                        product.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      subtitle: Text(
+                        "${currencyFormat.format(baseUnit.price)} / ${baseUnit.unitName}",
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ProductDetailScreen(product: product),
+                          ),
+                        );
+                      },
+                      trailing: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[800],
+                          shape: const CircleBorder(),
+                          padding: const EdgeInsets.all(10),
+                        ),
+                        onPressed: () {
+                          final cartItem = CartItem(
+                            productId: product.id,
+                            productName: product.name,
+                            unitId: baseUnit.id,
+                            unitName: baseUnit.unitName,
+                            price: baseUnit.price,
+                            quantity: 1,
+                          );
+
+                          Provider.of<CartProvider>(
+                            context,
+                            listen: false,
+                          ).addToCart(cartItem);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Đã thêm ${product.name} vào giỏ!'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                        },
+                        child: const Icon(Icons.add, color: Colors.white),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }

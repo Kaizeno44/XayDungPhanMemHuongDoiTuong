@@ -1,3 +1,4 @@
+// ================= CART ITEM =================
 class CartItem {
   final int productId;
   final String productName;
@@ -18,20 +19,27 @@ class CartItem {
   double get total => price * quantity;
 
   Map<String, dynamic> toJson() {
-    return {
-      "productId": productId,
-      "unitId": unitId,
-      "quantity": quantity,
-    };
+    return {"productId": productId, "unitId": unitId, "quantity": quantity};
   }
 }
 
+// ================= CUSTOMER =================
 class Customer {
   final String id;
   final String name;
+
   Customer({required this.id, required this.name});
+
+  // Thêm factory để parse an toàn nếu sau này cần
+  factory Customer.fromJson(Map<String, dynamic> json) {
+    return Customer(
+      id: json['id']?.toString() ?? '',
+      name: json['fullName'] ?? json['name'] ?? 'Khách hàng',
+    );
+  }
 }
 
+// ================= PRODUCT =================
 class Product {
   final int id;
   final String name;

@@ -25,10 +25,13 @@ class CartScreen extends StatelessWidget {
                       final item = cart.items[i];
                       return ListTile(
                         title: Text(item.productName),
-                        subtitle: Text("${currencyFormat.format(item.price)} x ${item.quantity} ${item.unitName}"),
+                        subtitle: Text(
+                          "${currencyFormat.format(item.price)} x ${item.quantity} ${item.unitName}",
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => cart.removeItem(item.productId, item.unitId),
+                          onPressed: () =>
+                              cart.removeItem(item.productId, item.unitId),
                         ),
                       );
                     },
@@ -40,15 +43,28 @@ class CartScreen extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Tổng: ${currencyFormat.format(cart.totalAmount)}",
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(
+                        "Tổng: ${currencyFormat.format(cart.totalAmount)}",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       ElevatedButton(
-                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CheckoutScreen())),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CheckoutScreen(
+                              customerId: '',
+                              storeId: '',
+                            ),
+                          ),
+                        ),
                         child: const Text("Thanh toán"),
                       ),
                     ],
                   ),
-                )
+                ),
               ],
             ),
     );

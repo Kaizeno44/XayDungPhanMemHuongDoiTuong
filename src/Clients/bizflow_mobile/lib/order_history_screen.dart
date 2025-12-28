@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import 'pay_debt_screen.dart'; // 👈 Màn hình Trả nợ
+
 class OrderHistoryScreen extends StatefulWidget {
   final String customerId;
 
@@ -16,7 +18,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   List<dynamic> orders = [];
   double currentDebt = 0;
   bool isLoading = true;
-  String? errorMessage; // Biến lưu thông báo lỗi nếu có
+  String? errorMessage;
+
+  // Hardcode StoreId giống CheckoutScreen
+  final String storeId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
   @override
   void initState() {
@@ -24,14 +29,15 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     fetchHistory();
   }
 
-  // Hàm lấy dữ liệu từ API
+  // =========================
+  // GỌI API LỊCH SỬ + CÔNG NỢ
+  // =========================
   Future<void> fetchHistory() async {
     setState(() {
       isLoading = true;
       errorMessage = null;
     });
 
-    // QUAN TRỌNG: Đã cập nhật cổng 5103 chuẩn cho OrderAPI
     final url =
         "http://10.0.2.2:5103/api/Customers/${widget.customerId}/history";
 
@@ -42,8 +48,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         final data = jsonDecode(response.body);
         setState(() {
           orders = data['orders'];
-          currentDebt = (data['currentDebt'] as num)
-              .toDouble(); // Ép kiểu an toàn
+          currentDebt = (data['currentDebt'] as num).toDouble();
           isLoading = false;
         });
       } else {
@@ -55,30 +60,29 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     } catch (e) {
       setState(() {
         isLoading = false;
-        errorMessage =
-            "Không thể kết nối đến Server.\nVui lòng kiểm tra lại Backend.";
-        print("Lỗi chi tiết: $e");
+        errorMessage = "Không thể kết nối Server.\nVui lòng kiểm tra Backend.";
       });
     }
   }
 
-  // Hàm chọn màu sắc dựa trên trạng thái đơn hàng
+  // =========================
+  // MÀU TRẠNG THÁI
+  // =========================
   Color _getStatusColor(String status) {
     switch (status) {
       case 'Confirmed':
-        return Colors.green; // Đã xác nhận -> Xanh lá
+        return Colors.green;
       case 'Pending':
-        return Colors.orange; // Đang chờ -> Cam
+        return Colors.orange;
       case 'Cancelled':
-        return Colors.red; // Đã hủy -> Đỏ
+        return Colors.red;
       case 'Completed':
-        return Colors.blue; // Hoàn thành -> Xanh dương
+        return Colors.blue;
       default:
         return Colors.grey;
     }
   }
 
-  // Hàm dịch trạng thái sang tiếng Việt (nếu cần)
   String _translateStatus(String status) {
     switch (status) {
       case 'Confirmed':
@@ -101,221 +105,178 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Lịch sử đơn hàng"),
+        title: const Text("Lịch sử & Công nợ"),
         centerTitle: true,
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          // === PHẦN 1: TỔNG NỢ ===
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.red[50],
-              border: Border(bottom: BorderSide(color: Colors.red.shade100)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                const Text(
-                  "TỔNG DƯ NỢ HIỆN TẠI",
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  currencyFormat.format(currentDebt),
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // === PHẦN 2: DANH SÁCH ĐƠN HÀNG ===
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : errorMessage != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 50,
-                          color: Colors.red,
-                        ),
-                        const SizedBox(height: 10),
-                        Text(errorMessage!, textAlign: TextAlign.center),
-                        const SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: fetchHistory,
-                          child: const Text("Thử lại"),
-                        ),
-                      ],
-                    ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: fetchHistory, // Vuốt xuống để tải lại
-                    child: orders.isEmpty
-                        ? ListView(
-                            // Dùng ListView để có thể vuốt refresh dù trống
-                            children: const [
-                              SizedBox(height: 100),
-                              Center(
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.shopping_bag_outlined,
-                                      size: 60,
-                                      color: Colors.grey,
+                // =========================
+                // PHẦN TỔNG NỢ + NÚT TRẢ NỢ
+                // =========================
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.red.shade50,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Tổng dư nợ hiện tại",
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            currencyFormat.format(currentDebt),
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.payments),
+                        label: const Text("Trả nợ"),
+                        onPressed: currentDebt <= 0
+                            ? null
+                            : () async {
+                                final result = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PayDebtScreen(
+                                      customerId: widget.customerId,
+                                      storeId: storeId,
+                                      currentDebt: currentDebt,
                                     ),
-                                    SizedBox(height: 10),
-                                    Text(
-                                      "Chưa có đơn hàng nào",
-                                      style: TextStyle(color: Colors.grey),
+                                  ),
+                                );
+
+                                // Nếu trả nợ OK → reload
+                                if (result == true) {
+                                  fetchHistory();
+                                }
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+
+                // =========================
+                // DANH SÁCH ĐƠN HÀNG
+                // =========================
+                Expanded(
+                  child: errorMessage != null
+                      ? Center(
+                          child: Text(
+                            errorMessage!,
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: fetchHistory,
+                          child: orders.isEmpty
+                              ? ListView(
+                                  children: const [
+                                    SizedBox(height: 120),
+                                    Center(
+                                      child: Column(
+                                        children: [
+                                          Icon(
+                                            Icons.shopping_bag_outlined,
+                                            size: 60,
+                                            color: Colors.grey,
+                                          ),
+                                          SizedBox(height: 10),
+                                          Text("Chưa có đơn hàng nào"),
+                                        ],
+                                      ),
                                     ),
                                   ],
-                                ),
-                              ),
-                            ],
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(10),
-                            itemCount: orders.length,
-                            itemBuilder: (ctx, i) {
-                              final order = orders[i];
-                              final statusColor = _getStatusColor(
-                                order['status'],
-                              );
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.all(10),
+                                  itemCount: orders.length,
+                                  itemBuilder: (ctx, i) {
+                                    final order = orders[i];
+                                    final statusColor = _getStatusColor(
+                                      order['status'],
+                                    );
 
-                              return Card(
-                                elevation: 3,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                margin: const EdgeInsets.only(bottom: 12),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Dòng 1: Mã đơn và Trạng thái
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(
-                                                Icons.receipt_long,
-                                                color: Colors.blue[800],
-                                                size: 20,
+                                    return Card(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 3,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                Text(
+                                                  order['orderCode'],
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _translateStatus(
+                                                    order['status'],
+                                                  ),
+                                                  style: TextStyle(
+                                                    color: statusColor,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const Divider(),
+                                            Text(
+                                              "Ngày: ${dateFormat.format(DateTime.parse(order['orderDate']))}",
+                                              style: const TextStyle(
+                                                fontSize: 13,
                                               ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                order['orderCode'] ?? "CODE",
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              "Thanh toán: ${order['paymentMethod'] == 'Debt' ? 'Ghi nợ' : 'Tiền mặt'}",
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Align(
+                                              alignment: Alignment.centerRight,
+                                              child: Text(
+                                                currencyFormat.format(
+                                                  order['totalAmount'],
+                                                ),
                                                 style: const TextStyle(
+                                                  fontSize: 18,
                                                   fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: statusColor.withOpacity(
-                                                0.1,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              border: Border.all(
-                                                color: statusColor.withOpacity(
-                                                  0.5,
                                                 ),
                                               ),
                                             ),
-                                            child: Text(
-                                              _translateStatus(order['status']),
-                                              style: TextStyle(
-                                                color: statusColor,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                      const Divider(),
-                                      // Dòng 2: Chi tiết ngày và tiền
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                "Ngày đặt: ${dateFormat.format(DateTime.parse(order['orderDate']))}",
-                                                style: TextStyle(
-                                                  color: Colors.grey[600],
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                "TT: ${order['paymentMethod'] == 'Debt' ? 'Ghi nợ' : 'Tiền mặt'}",
-                                                style: TextStyle(
-                                                  color: Colors.grey[800],
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          Text(
-                                            currencyFormat.format(
-                                              order['totalAmount'],
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.blue[900],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
-                  ),
-          ),
-        ],
-      ),
+                        ),
+                ),
+              ],
+            ),
     );
   }
 }

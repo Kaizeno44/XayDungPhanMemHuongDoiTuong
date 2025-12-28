@@ -3,8 +3,8 @@ using BizFlow.OrderAPI.DbModels;
 using BizFlow.OrderAPI.DTOs;
 using BizFlow.OrderAPI.Services;
 using Microsoft.AspNetCore.Mvc;
-using BizFlow.OrderAPI.Hubs; // 1. Thêm namespace chứa Hub
-using Microsoft.AspNetCore.SignalR; // 2. Thêm thư viện SignalR
+using Microsoft.EntityFrameworkCore;
+
 namespace BizFlow.OrderAPI.Controllers
 {
     [ApiController]
@@ -13,15 +13,13 @@ namespace BizFlow.OrderAPI.Controllers
     {
         private readonly OrderDbContext _context;
         private readonly ProductServiceClient _productService;
-        private readonly IHubContext<NotificationHub> _hubContext;
+
         public OrdersController(
             OrderDbContext context,
-            ProductServiceClient productService,
-            IHubContext<NotificationHub> hubContext) // 4. Inject HubContext vào Constructor
+            ProductServiceClient productService)
         {
             _context = context;
             _productService = productService;
-            _hubContext = hubContext;
         }
 
         [HttpPost]
@@ -31,7 +29,7 @@ namespace BizFlow.OrderAPI.Controllers
             if (request.Items == null || !request.Items.Any())
                 return BadRequest("Đơn hàng rỗng.");
 
-            // 1️⃣ CHECK KHO + LẤY GIÁ (1 LẦN)
+            // 1️⃣ CHECK KHO + LẤY GIÁ
             var checkStockRequest = request.Items.Select(i =>
                 new CheckStockRequest
                 {
@@ -84,17 +82,44 @@ namespace BizFlow.OrderAPI.Controllers
 
             order.TotalAmount = totalAmount;
 
-            // 3️⃣ GHI NỢ
+            // 3️⃣ GHI NỢ & CHẶN HẠN MỨC
             if (request.PaymentMethod == "Debt")
             {
+                // A. Tính tổng nợ hiện tại
+                var currentDebt = await _context.DebtLogs
+                    .Where(d => d.CustomerId == request.CustomerId)
+                    .SumAsync(d => d.Amount);
+
+                // B. Hạn mức tín dụng (50 triệu)
+                decimal creditLimit = 50_000_000;
+
+                // C. Kiểm tra vượt hạn mức
+                if (currentDebt + totalAmount > creditLimit)
+                {
+                    return BadRequest(
+                        $"Khách đang nợ {currentDebt:N0}đ. " +
+                        $"Đơn này {totalAmount:N0}đ sẽ vượt hạn mức {creditLimit:N0}đ.");
+                }
+
+                // D. Ghi log nợ
                 _context.DebtLogs.Add(new DebtLog
                 {
                     CustomerId = request.CustomerId,
                     StoreId = request.StoreId,
-                    Amount = totalAmount,
+                    Amount = totalAmount,      // DƯƠNG → tăng nợ
+                    Action = "Debit",
                     Reason = $"Nợ đơn hàng {order.OrderCode}",
                     CreatedAt = DateTime.UtcNow
                 });
+
+                // E. Đồng bộ bảng Customer
+                var customer =
+                    await _context.Customers.FindAsync(request.CustomerId);
+
+                if (customer != null)
+                {
+                    customer.CurrentDebt += totalAmount;
+                }
             }
 
             // 4️⃣ LƯU ĐƠN
@@ -102,7 +127,7 @@ namespace BizFlow.OrderAPI.Controllers
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
 
-            // 5️⃣ TRỪ KHO (SAU KHI LƯU)
+            // 5️⃣ TRỪ KHO
             foreach (var item in order.OrderItems)
             {
                 await _productService.DeductStockAsync(
@@ -110,24 +135,7 @@ namespace BizFlow.OrderAPI.Controllers
                     item.UnitId,
                     item.Quantity);
             }
-            // 🔥 6️⃣ SIGNALR: BẮN THÔNG BÁO "TING TING" (PHẦN MỚI THÊM)
-            // ==========================================================
-            try 
-            {
-                // Gửi tin nhắn đến nhóm "Admins" (Những người đang mở trang Web Admin)
-                await _hubContext.Clients.Group("Admins").SendAsync("ReceiveOrderNotification", new 
-                { 
-                    Message = $"🔔 Ting ting! Đơn mới {order.OrderCode}", 
-                    TotalAmount = order.TotalAmount,
-                    Time = DateTime.Now.ToString("HH:mm:ss")
-                });
-            }
-            catch (Exception ex)
-            {
-                // Nếu lỗi SignalR thì chỉ log ra console, KHÔNG ĐƯỢC làm lỗi đơn hàng
-                Console.WriteLine($"--> Lỗi gửi thông báo SignalR: {ex.Message}");
-            }
-            // ==========================================================
+
             return Ok(new
             {
                 Message = "Tạo đơn thành công",

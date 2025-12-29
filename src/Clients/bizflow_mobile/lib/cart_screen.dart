@@ -1,14 +1,13 @@
+import 'package:bizflow_mobile/cart_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'cart_provider.dart';
+// Đảm bảo đường dẫn import đúng:
 import 'checkout_screen.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
-  // ID của Cửa hàng (Lấy từ DB thực tế của bạn)
-  // Nếu sau này có chức năng chọn cửa hàng, bạn sẽ lấy ID này từ biến chọn.
   static const String currentStoreId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
   @override
@@ -46,7 +45,7 @@ class CartScreen extends StatelessWidget {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(12),
                     itemCount: cart.items.length,
-                    separatorBuilder: (_, __) => const Divider(),
+                    separatorBuilder: (_, _) => const Divider(),
                     itemBuilder: (ctx, i) {
                       final item = cart.items[i];
                       return ListTile(
@@ -78,7 +77,7 @@ class CartScreen extends StatelessWidget {
                             cart.removeItem(item.productId, item.unitId);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text("Đã xóa sản phẩm khỏi giỏ"),
+                                content: Text("Đã xóa sản phẩm"),
                                 duration: Duration(seconds: 1),
                               ),
                             );
@@ -94,6 +93,7 @@ class CartScreen extends StatelessWidget {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
+                        // ignore: deprecated_member_use
                         color: Colors.black.withOpacity(0.1),
                         blurRadius: 10,
                         offset: const Offset(0, -5),
@@ -130,11 +130,10 @@ class CartScreen extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
+                                  // ĐÃ SỬA: Chỉ cần truyền storeId
                                   builder: (_) => const CheckoutScreen(
-                                    // Truyền ID thật vào đây
-                                    customerId:
-                                        '', // Sẽ được chọn lại trong màn hình checkout
                                     storeId: currentStoreId,
+                                    customerId: '',
                                   ),
                                 ),
                               );

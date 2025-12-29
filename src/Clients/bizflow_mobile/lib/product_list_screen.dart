@@ -90,7 +90,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 right: 5,
                 top: 5,
                 child: Consumer<CartProvider>(
-                  builder: (_, cart, __) => cart.items.isEmpty
+                  builder: (_, cart, _) => cart.items.isEmpty
                       ? const SizedBox()
                       : Container(
                           padding: const EdgeInsets.all(2),
@@ -167,6 +167,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
+                          // ignore: deprecated_member_use
                           color: (uiProps['color'] as Color).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -204,7 +205,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                             productId: product.id,
                             productName: product.name,
                             unitId: product.unitId,
-                            unitName: product.unitName ?? "Đơn vị",
+                            unitName: product.unitName,
                             price: product.price,
                             quantity: 1,
                           );

@@ -34,71 +34,96 @@ class Customer {
   factory Customer.fromJson(Map<String, dynamic> json) {
     return Customer(
       id: json['id']?.toString() ?? '',
-      name: json['name'] ?? 'Khách hàng',
+      name: json['fullName'] ?? json['name'] ?? 'Khách hàng',
     );
   }
 }
 
-// ================= PRODUCT (CẬP NHẬT QUAN TRỌNG) =================
+// ================= PRODUCT =================
 class Product {
   final int id;
   final String name;
-  final double price;
-  final int unitId;
-  final String unitName;
-  final String? imageUrl; // Thêm ảnh cho đẹp
+  final String? description;
+  final String? imageUrl;
+  final List<ProductUnit> productUnits;
 
   Product({
     required this.id,
     required this.name,
-    required this.price,
-    required this.unitId,
-    required this.unitName,
+    this.description,
     this.imageUrl,
+    required this.productUnits,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    // 1. Khởi tạo giá trị mặc định
-    double parsedPrice = 0.0;
-    int parsedUnitId = 0;
-    String parsedUnitName = json['baseUnit'] ?? 'Đơn vị';
-
-    // 2. Logic thông minh: Tìm giá trong productUnits
-    // (Vì API của bạn giấu giá bên trong danh sách con này)
-    if (json['productUnits'] != null) {
-      final units = json['productUnits'] as List;
-      if (units.isNotEmpty) {
-        // Lấy đơn vị đầu tiên (thường là đơn vị cơ bản)
-        final firstUnit = units[0];
-
-        // Lấy ID đơn vị
-        parsedUnitId = firstUnit['id'] ?? 0;
-
-        // Lấy Tên đơn vị
-        parsedUnitName = firstUnit['unitName'] ?? parsedUnitName;
-
-        // Lấy Giá (Xử lý an toàn cả int và double)
-        if (firstUnit['price'] != null) {
-          parsedPrice = (firstUnit['price'] is int)
-              ? (firstUnit['price'] as int).toDouble()
-              : (firstUnit['price'] as double);
-        }
-      }
-    }
-    // Fallback: Nếu không có productUnits, thử tìm giá ở root (phòng hờ)
-    else if (json['price'] != null) {
-      parsedPrice = (json['price'] is int)
-          ? (json['price'] as int).toDouble()
-          : (json['price'] as double);
-    }
+    var unitsJson = json['productUnits'] as List;
+    List<ProductUnit> units = unitsJson
+        .map((e) => ProductUnit.fromJson(e))
+        .toList();
 
     return Product(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? "Sản phẩm không tên",
-      price: parsedPrice,
-      unitId: parsedUnitId,
-      unitName: parsedUnitName,
-      imageUrl: json['imageUrl'], // Lấy link ảnh nếu có
+      id: json['id'],
+      name: json['name'],
+      description: json['description'],
+      imageUrl: json['imageUrl'],
+      productUnits: units,
+    );
+  }
+
+  int? get unitId => null;
+
+  get unitName => null;
+
+  double get price => null;
+}
+
+class ProductUnit {
+  final int id;
+  final String unitName;
+  final double price;
+  final bool isBaseUnit;
+
+  ProductUnit({
+    required this.id,
+    required this.unitName,
+    required this.price,
+    required this.isBaseUnit,
+  });
+
+  factory ProductUnit.fromJson(Map<String, dynamic> json) {
+    return ProductUnit(
+      id: json['id'],
+      unitName: json['unitName'],
+      price: (json['price'] as num).toDouble(),
+      isBaseUnit: json['isBaseUnit'],
+    );
+  }
+}
+
+class ProductPriceResult {
+  final double price;
+  final String unitName;
+
+  ProductPriceResult({required this.price, required this.unitName});
+
+  factory ProductPriceResult.fromJson(Map<String, dynamic> json) {
+    return ProductPriceResult(
+      price: (json['price'] as num).toDouble(),
+      unitName: json['unitName'],
+    );
+  }
+}
+
+class SimpleCheckStockResult {
+  final bool isEnough;
+  final String message;
+
+  SimpleCheckStockResult({required this.isEnough, required this.message});
+
+  factory SimpleCheckStockResult.fromJson(Map<String, dynamic> json) {
+    return SimpleCheckStockResult(
+      isEnough: json['isEnough'],
+      message: json['message'],
     );
   }
 }

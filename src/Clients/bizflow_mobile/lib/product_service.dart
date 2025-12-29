@@ -12,6 +12,7 @@ class ProductService {
     final url = Uri.parse(ApiConfig.products);
 
     try {
+      // ignore: avoid_print
       print('🔵 [ProductService] Đang gọi API: $url');
 
       // Thêm timeout 10 giây để tránh treo app
@@ -19,6 +20,7 @@ class ProductService {
           .get(url, headers: ApiConfig.headers) // Dùng header chuẩn từ config
           .timeout(const Duration(seconds: 10));
 
+      // ignore: avoid_print
       print('🟢 [ProductService] Status Code: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -63,6 +65,7 @@ class ProductService {
     } on TimeoutException {
       throw Exception('Kết nối quá hạn (Timeout). Server phản hồi quá lâu.');
     } catch (e) {
+      // ignore: avoid_print
       print('🔴 Lỗi chi tiết: $e');
       throw Exception('Lỗi xử lý dữ liệu: $e');
     }

@@ -30,7 +30,6 @@ class Customer {
 
   Customer({required this.id, required this.name});
 
-  // Thêm factory để parse an toàn nếu sau này cần
   factory Customer.fromJson(Map<String, dynamic> json) {
     return Customer(
       id: json['id']?.toString() ?? '',
@@ -39,7 +38,7 @@ class Customer {
   }
 }
 
-// ================= PRODUCT =================
+// ================= PRODUCT (ĐÃ SỬA LỖI) =================
 class Product {
   final int id;
   final String name;
@@ -56,19 +55,41 @@ class Product {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    var unitsJson = json['productUnits'] as List;
-    List<ProductUnit> units = unitsJson.map((e) => ProductUnit.fromJson(e)).toList();
+    var unitsJson = json['productUnits'] as List? ?? []; // Xử lý null an toàn
+    List<ProductUnit> units = unitsJson
+        .map((e) => ProductUnit.fromJson(e))
+        .toList();
 
     return Product(
-      id: json['id'],
-      name: json['name'],
+      id: json['id'] ?? 0,
+      name: json['name'] ?? '',
       description: json['description'],
       imageUrl: json['imageUrl'],
       productUnits: units,
     );
   }
+
+  // --- LOGIC MỚI: Lấy đơn vị mặc định (Base Unit) ---
+  ProductUnit? get _defaultUnit {
+    if (productUnits.isEmpty) return null;
+    // Ưu tiên lấy đơn vị cơ bản, nếu không có thì lấy cái đầu tiên
+    return productUnits.firstWhere(
+      (u) => u.isBaseUnit,
+      orElse: () => productUnits.first,
+    );
+  }
+
+  // Sửa lỗi: Trả về 0.0 nếu không có đơn vị, thay vì null
+  double get price => _defaultUnit?.price ?? 0.0;
+
+  // Sửa lỗi: Trả về ID của đơn vị mặc định
+  int get unitId => _defaultUnit?.id ?? 0;
+
+  // Sửa lỗi: Trả về Tên của đơn vị mặc định
+  String get unitName => _defaultUnit?.unitName ?? '';
 }
 
+// ================= PRODUCT UNIT =================
 class ProductUnit {
   final int id;
   final String unitName;
@@ -84,14 +105,15 @@ class ProductUnit {
 
   factory ProductUnit.fromJson(Map<String, dynamic> json) {
     return ProductUnit(
-      id: json['id'],
-      unitName: json['unitName'],
-      price: (json['price'] as num).toDouble(),
-      isBaseUnit: json['isBaseUnit'],
+      id: json['id'] ?? 0,
+      unitName: json['unitName'] ?? '',
+      price: (json['price'] as num?)?.toDouble() ?? 0.0, // Parse an toàn
+      isBaseUnit: json['isBaseUnit'] ?? false,
     );
   }
 }
 
+// ================= HELPER CLASSES =================
 class ProductPriceResult {
   final double price;
   final String unitName;
@@ -114,8 +136,8 @@ class SimpleCheckStockResult {
 
   factory SimpleCheckStockResult.fromJson(Map<String, dynamic> json) {
     return SimpleCheckStockResult(
-      isEnough: json['isEnough'],
-      message: json['message'],
+      isEnough: json['isEnough'] ?? false,
+      message: json['message'] ?? '',
     );
   }
 }

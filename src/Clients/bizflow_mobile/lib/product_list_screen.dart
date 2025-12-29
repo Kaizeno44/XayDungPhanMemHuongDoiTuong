@@ -7,7 +7,6 @@ import 'cart_provider.dart';
 import 'models.dart';
 import 'cart_screen.dart';
 import 'product_service.dart'; // Import service vừa tạo
-import 'product_detail_screen.dart'; // Import ProductDetailScreen
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
@@ -91,7 +90,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 right: 5,
                 top: 5,
                 child: Consumer<CartProvider>(
-                  builder: (_, cart, __) => cart.items.isEmpty
+                  builder: (_, cart, _) => cart.items.isEmpty
                       ? const SizedBox()
                       : Container(
                           padding: const EdgeInsets.all(2),
@@ -152,10 +151,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 itemBuilder: (context, index) {
                   final product = products[index];
                   final uiProps = _getProductUI(product.id);
-                  final baseUnit = product.productUnits.firstWhere(
-                    (unit) => unit.isBaseUnit,
-                    orElse: () => product.productUnits.first,
-                  );
 
                   return Card(
                     elevation: 4,
@@ -172,6 +167,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
+                          // ignore: deprecated_member_use
                           color: (uiProps['color'] as Color).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -189,20 +185,12 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        "${currencyFormat.format(baseUnit.price)} / ${baseUnit.unitName}",
+                        "${currencyFormat.format(product.price)} / ${product.unitName}",
                         style: const TextStyle(
                           color: Colors.red,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ProductDetailScreen(product: product),
-                          ),
-                        );
-                      },
                       trailing: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue[800],
@@ -210,12 +198,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           padding: const EdgeInsets.all(10),
                         ),
                         onPressed: () {
+                          // --- ĐÃ GỠ BỎ LOGIC CHẶN ID ---
+                          // Bây giờ bạn có thể thêm bất kỳ sản phẩm nào
+
                           final cartItem = CartItem(
                             productId: product.id,
                             productName: product.name,
-                            unitId: baseUnit.id,
-                            unitName: baseUnit.unitName,
-                            price: baseUnit.price,
+                            unitId: product.unitId,
+                            unitName: product.unitName,
+                            price: product.price,
                             quantity: 1,
                           );
 

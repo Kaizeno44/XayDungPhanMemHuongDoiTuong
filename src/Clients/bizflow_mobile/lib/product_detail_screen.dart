@@ -51,7 +51,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   void _updateQuantity(int change) {
     setState(() {
-      _quantity = (_quantity + change).clamp(1, 999); // Giới hạn số lượng từ 1 đến 999
+      _quantity = (_quantity + change).clamp(
+        1,
+        999,
+      ); // Giới hạn số lượng từ 1 đến 999
     });
     _checkStock();
   }
@@ -66,6 +69,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
 
     if (!stockResult.isEnough) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(stockResult.message),
@@ -83,10 +87,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       price: _selectedUnit!.price,
       quantity: _quantity,
     );
+    // ignore: use_build_context_synchronously
     Provider.of<CartProvider>(context, listen: false).addToCart(cartItem);
+    // ignore: use_build_context_synchronously
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!'),
+        content: Text(
+          'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
+        ),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -115,14 +123,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 decoration: BoxDecoration(
                   color: Colors.grey[200],
                   borderRadius: BorderRadius.circular(12),
-                  image: widget.product.imageUrl != null && widget.product.imageUrl!.isNotEmpty
+                  image:
+                      widget.product.imageUrl != null &&
+                          widget.product.imageUrl!.isNotEmpty
                       ? DecorationImage(
                           image: NetworkImage(widget.product.imageUrl!),
                           fit: BoxFit.cover,
                         )
                       : null,
                 ),
-                child: widget.product.imageUrl == null || widget.product.imageUrl!.isEmpty
+                child:
+                    widget.product.imageUrl == null ||
+                        widget.product.imageUrl!.isEmpty
                     ? Icon(Icons.image, size: 100, color: Colors.grey[400])
                     : null,
               ),
@@ -131,10 +143,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
             Text(
               widget.product.name,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
@@ -165,7 +174,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   selectedColor: Colors.blue[100],
                   backgroundColor: Colors.grey[200],
                   labelStyle: TextStyle(
-                    color: _selectedUnit?.id == unit.id ? Colors.blue[800] : Colors.black87,
+                    color: _selectedUnit?.id == unit.id
+                        ? Colors.blue[800]
+                        : Colors.black87,
                     fontWeight: FontWeight.bold,
                   ),
                 );
@@ -197,7 +208,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
                 Text(
                   '$_quantity',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline),
@@ -208,7 +222,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   child: Text(
                     _stockMessage,
                     style: TextStyle(
-                      color: _stockMessage.contains('Đủ hàng') ? Colors.green : Colors.red,
+                      color: _stockMessage.contains('Đủ hàng')
+                          ? Colors.green
+                          : Colors.red,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -227,7 +243,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue[800],
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 30,
+                    vertical: 15,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),

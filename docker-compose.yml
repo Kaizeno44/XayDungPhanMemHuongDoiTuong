@@ -47,6 +47,36 @@ services:
     networks:
       - bizflow-network
 
+  # 5. AI Service (Python FastAPI)
+  ai_service:
+    build:
+      context: ./src/Services/BizFlow.AI
+      dockerfile: Dockerfile
+    container_name: bizflow_ai
+    environment:
+      - CHROMA_HOST=bizflow_chroma
+      - CHROMA_PORT=8000
+      - GEMINI_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx # Liên hệ person D để lấy
+    ports:
+      - "5005:8000"
+    volumes:
+      - ./src/Services/BizFlow.AI:/app
+    networks:
+      - bizflow-network
+    depends_on:
+      - chroma_db
+
+  # 6. ChromaDB (Vector Database cho AI)
+  chroma_db:
+    image: chromadb/chroma:latest
+    container_name: bizflow_chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - bizflow-network
+
 networks:
   bizflow-network:
     driver: bridge
@@ -54,3 +84,4 @@ networks:
 volumes:
   pgdata:
   mysqldata:
+  chroma_data:

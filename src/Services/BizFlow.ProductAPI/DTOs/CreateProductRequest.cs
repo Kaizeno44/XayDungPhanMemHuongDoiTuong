@@ -1,32 +1,28 @@
+using System.Collections.Generic;
+
 namespace BizFlow.ProductAPI.DTOs
 {
-    public class ProductUnitDto
-    {
-        // Thêm = string.Empty để đảm bảo không bao giờ null
-        public string UnitName { get; set; } = string.Empty; 
-        
-        public int ConversionRate { get; set; }
-        public decimal Price { get; set; }
-        public bool IsDefault { get; set; }
-    }
-
     public class CreateProductRequest
     {
-        // Thêm = string.Empty
-        public string Name { get; set; } = string.Empty;
-        
-        // Thêm = string.Empty
-        public string BaseUnit { get; set; } = string.Empty;
-        
+        public string Name { get; set; }
+        public string Sku { get; set; }
+        public string ImageUrl { get; set; }
+        public string Description { get; set; }
         public int CategoryId { get; set; }
-
-        // Quan trọng: Khởi tạo List luôn để tránh lỗi NullReference khi lặp
-        public List<ProductUnitDto> Units { get; set; } = new List<ProductUnitDto>();
+        
+        // Đơn vị tính gốc (ví dụ: Viên, Cái)
+        public string BaseUnitName { get; set; }
+        public int InitialStock { get; set; }
+        public decimal BasePrice { get; set; }
+        
+        // Danh sách đơn vị quy đổi (ví dụ: Thùng, Hộp)
+        public List<ProductUnitDto>? OtherUnits { get; set; }
     }
 
-    public class DeductStockRequest
+    public class ProductUnitDto
     {
-        public int UnitId { get; set; }
-        public decimal Quantity { get; set; }
+        public string UnitName { get; set; }
+        public double ConversionValue { get; set; }
+        public decimal Price { get; set; }
     }
 }

@@ -8,15 +8,18 @@ namespace BizFlow.OrderAPI.DbModels
     {
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        public string OrderCode { get; set; } = string.Empty;
+
         public Guid StoreId { get; set; }
         public Guid CustomerId { get; set; }
-        public DateTime OrderDate { get; set; } = DateTime.UtcNow;
+
+        public DateTime OrderDate { get; set; }
         public decimal TotalAmount { get; set; }
-        public string Status { get; set; } = "Draft"; 
-        
-        public Customer Customer { get; set; } = null!;
-        
-        // 👇 QUAN TRỌNG: Phải có đoạn " = new List<OrderItem>();" ở cuối
+
+        public string Status { get; set; } = "Draft";
+        public string PaymentMethod { get; set; } = string.Empty;
+
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
     }
 }

@@ -67,11 +67,14 @@ namespace BizFlow.OrderAPI.Migrations
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("char(36)");
 
-                    b.Property<string>("Note")
+                    b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<Guid?>("RefOrderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("StoreId")
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
@@ -88,8 +91,16 @@ namespace BizFlow.OrderAPI.Migrations
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("OrderCode")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<DateTime>("OrderDate")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -102,8 +113,6 @@ namespace BizFlow.OrderAPI.Migrations
                         .HasColumnType("decimal(65,30)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CustomerId");
 
                     b.ToTable("Orders");
                 });
@@ -123,6 +132,9 @@ namespace BizFlow.OrderAPI.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(65,30)");
+
                     b.Property<int>("UnitId")
                         .HasColumnType("int");
 
@@ -140,24 +152,15 @@ namespace BizFlow.OrderAPI.Migrations
                     b.ToTable("OrderItems");
                 });
 
-            modelBuilder.Entity("BizFlow.OrderAPI.DbModels.Order", b =>
-                {
-                    b.HasOne("BizFlow.OrderAPI.DbModels.Customer", "Customer")
-                        .WithMany()
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Customer");
-                });
-
             modelBuilder.Entity("BizFlow.OrderAPI.DbModels.OrderItem", b =>
                 {
-                    b.HasOne("BizFlow.OrderAPI.DbModels.Order", null)
+                    b.HasOne("BizFlow.OrderAPI.DbModels.Order", "Order")
                         .WithMany("OrderItems")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("BizFlow.OrderAPI.DbModels.Order", b =>

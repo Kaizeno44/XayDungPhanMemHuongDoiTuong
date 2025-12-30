@@ -1,104 +1,146 @@
 using BizFlow.OrderAPI.Data;
 using BizFlow.OrderAPI.DbModels;
+using BizFlow.OrderAPI.DTOs;
+using BizFlow.OrderAPI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace BizFlow.OrderAPI.Controllers
 {
-    [Route("api/orders")]
     [ApiController]
+    [Route("api/[controller]")]
     public class OrdersController : ControllerBase
     {
         private readonly OrderDbContext _context;
+        private readonly ProductServiceClient _productService;
 
-        public OrdersController(OrderDbContext context)
+        public OrdersController(
+            OrderDbContext context,
+            ProductServiceClient productService)
         {
             _context = context;
+            _productService = productService;
         }
 
-        // API nhận đơn hàng
         [HttpPost]
-        public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
+        public async Task<IActionResult> CreateOrder(
+            [FromBody] CreateOrderRequest request)
         {
-            if (request.Items == null || request.Items.Count == 0) 
-                return BadRequest("Đơn hàng rỗng!");
+            if (request.Items == null || !request.Items.Any())
+                return BadRequest("Đơn hàng rỗng.");
 
-            // Tạo đơn mới
-            var newOrder = new Order
+            // 1️⃣ CHECK KHO + LẤY GIÁ
+            var checkStockRequest = request.Items.Select(i =>
+                new CheckStockRequest
+                {
+                    ProductId = i.ProductId,
+                    UnitId = i.UnitId,
+                    Quantity = i.Quantity
+                }).ToList();
+
+            var stockResults =
+                await _productService.CheckStockAsync(checkStockRequest);
+
+            var notEnough =
+                stockResults.FirstOrDefault(x => !x.IsEnough);
+
+            if (notEnough != null)
+                return BadRequest(
+                    $"Sản phẩm ID {notEnough.ProductId} không đủ hàng.");
+
+            // 2️⃣ TẠO ĐƠN
+            var order = new Order
             {
-                Id = Guid.NewGuid(),
+                OrderCode = $"ORD-{DateTime.Now:yyyyMMddHHmmss}",
                 CustomerId = request.CustomerId,
+                StoreId = request.StoreId,
                 OrderDate = DateTime.UtcNow,
-                Status = "Confirmed",
-                TotalAmount = 0
+                PaymentMethod = request.PaymentMethod,
+                Status = "Pending",
+                OrderItems = new List<OrderItem>()
             };
 
-            // Thêm sản phẩm vào đơn
+            decimal totalAmount = 0;
+
             foreach (var item in request.Items)
             {
+                var stock = stockResults.First(x =>
+                    x.ProductId == item.ProductId);
+
                 var orderItem = new OrderItem
                 {
-                    Id = Guid.NewGuid(),
-                    OrderId = newOrder.Id,
                     ProductId = item.ProductId,
-                    
-                    // 👇 MỚI THÊM: Lưu UnitId vào DB
                     UnitId = item.UnitId,
-                    
-                    UnitName = item.UnitName,
                     Quantity = item.Quantity,
-                    UnitPrice = item.UnitPrice
+                    UnitPrice = stock.UnitPrice,
+                    Total = stock.UnitPrice * item.Quantity
                 };
-                newOrder.TotalAmount += (item.Quantity * item.UnitPrice);
-                newOrder.OrderItems.Add(orderItem);
+
+                order.OrderItems.Add(orderItem);
+                totalAmount += orderItem.Total;
             }
 
-            _context.Orders.Add(newOrder);
+            order.TotalAmount = totalAmount;
 
-            // Xử lý ghi nợ
-            if (request.IsDebt)
+            // 3️⃣ GHI NỢ & CHẶN HẠN MỨC
+            if (request.PaymentMethod == "Debt")
             {
-                var customer = await _context.Customers.FindAsync(request.CustomerId);
-                if (customer == null)
+                // A. Tính tổng nợ hiện tại
+                var currentDebt = await _context.DebtLogs
+                    .Where(d => d.CustomerId == request.CustomerId)
+                    .SumAsync(d => d.Amount);
+
+                // B. Hạn mức tín dụng (50 triệu)
+                decimal creditLimit = 50_000_000;
+
+                // C. Kiểm tra vượt hạn mức
+                if (currentDebt + totalAmount > creditLimit)
                 {
-                    customer = new Customer { Id = request.CustomerId, FullName = "Khách mới" };
-                    _context.Customers.Add(customer);
+                    return BadRequest(
+                        $"Khách đang nợ {currentDebt:N0}đ. " +
+                        $"Đơn này {totalAmount:N0}đ sẽ vượt hạn mức {creditLimit:N0}đ.");
                 }
 
-                var debtLog = new DebtLog
+                // D. Ghi log nợ
+                _context.DebtLogs.Add(new DebtLog
                 {
                     CustomerId = request.CustomerId,
-                    RefOrderId = newOrder.Id,
-                    Amount = newOrder.TotalAmount,
+                    StoreId = request.StoreId,
+                    Amount = totalAmount,      // DƯƠNG → tăng nợ
                     Action = "Debit",
-                    Note = $"Mua nợ đơn {newOrder.Id}"
-                };
-                _context.DebtLogs.Add(debtLog);
-                customer.CurrentDebt += newOrder.TotalAmount;
+                    Reason = $"Nợ đơn hàng {order.OrderCode}",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // E. Đồng bộ bảng Customer
+                var customer =
+                    await _context.Customers.FindAsync(request.CustomerId);
+
+                if (customer != null)
+                {
+                    customer.CurrentDebt += totalAmount;
+                }
             }
 
+            // 4️⃣ LƯU ĐƠN
+            order.Status = "Confirmed";
+            _context.Orders.Add(order);
             await _context.SaveChangesAsync();
-            return Ok(new { Success = true, Message = "Tạo đơn thành công!" });
+
+            // 5️⃣ TRỪ KHO
+            foreach (var item in order.OrderItems)
+            {
+                await _productService.DeductStockAsync(
+                    item.ProductId,
+                    item.UnitId,
+                    item.Quantity);
+            }
+
+            return Ok(new
+            {
+                Message = "Tạo đơn thành công",
+                OrderId = order.Id
+            });
         }
-    }
-
-    // Class hứng dữ liệu
-    public class CreateOrderRequest
-    {
-        public Guid CustomerId { get; set; }
-        public bool IsDebt { get; set; }
-        public List<OrderItemRequest> Items { get; set; } = new();
-    }
-
-    public class OrderItemRequest
-    {
-        public int ProductId { get; set; }
-        
-        // 👇 MỚI THÊM: Bắt buộc khách phải gửi mã đơn vị
-        public int UnitId { get; set; }
-        
-        public string UnitName { get; set; } = "";
-        public int Quantity { get; set; }
-        public decimal UnitPrice { get; set; }
     }
 }

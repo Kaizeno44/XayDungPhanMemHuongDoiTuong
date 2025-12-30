@@ -1,12 +1,13 @@
 using BizFlow.OrderAPI.Data;
+using BizFlow.OrderAPI.DTOs;
 using BizFlow.OrderAPI.DbModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace BizFlow.OrderAPI.Controllers
 {
-    [Route("api/customers")]
     [ApiController]
+    [Route("api/[controller]")]
     public class CustomersController : ControllerBase
     {
         private readonly OrderDbContext _context;
@@ -16,36 +17,133 @@ namespace BizFlow.OrderAPI.Controllers
             _context = context;
         }
 
-        // API: Thêm khách hàng mới
-        [HttpPost]
-        public async Task<IActionResult> CreateCustomer([FromBody] CreateCustomerRequest request)
+        // ==========================================
+        // 1. GET: api/Customers (Lấy danh sách)
+        // 👉 API NÀY ĐỂ SỬA LỖI 404 BÊN FLUTTER
+        // ==========================================
+        [HttpGet]
+        public async Task<IActionResult> GetCustomers()
         {
-            // 1. Giả lập mã cửa hàng (Cho giống với bên OrdersController)
-            var currentStoreId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+            var customers = await _context.Customers
+                .OrderBy(c => c.FullName) // Sắp xếp tên A-Z cho đẹp
+                .Select(c => new 
+                {
+                    c.Id,
+                    c.FullName,
+                    c.PhoneNumber,
+                    c.Address,
+                    c.CurrentDebt,
+                    c.StoreId
+                })
+                .ToListAsync();
 
-            // 2. Tạo đối tượng khách hàng
-            var newCustomer = new Customer
-            {
-                Id = Guid.NewGuid(),
-                StoreId = currentStoreId, // 👈 Quan trọng: Đánh dấu khách này thuộc cửa hàng của bạn
-                FullName = request.FullName,
-                PhoneNumber = request.PhoneNumber,
-                Address = request.Address,
-                CurrentDebt = 0
-            };
+            return Ok(customers);
+        }
 
-            _context.Customers.Add(newCustomer);
+        // ==========================================
+        // 2. POST: api/Customers (Tạo khách hàng mới)
+        // 👉 Dùng cái này tạo khách cho nhanh, khỏi vào Adminer
+        // ==========================================
+        [HttpPost]
+        public async Task<IActionResult> CreateCustomer([FromBody] Customer customer)
+        {
+            if (customer.Id == Guid.Empty)
+                customer.Id = Guid.NewGuid(); // Tự tạo ID nếu thiếu
+
+            if (string.IsNullOrEmpty(customer.FullName))
+                return BadRequest("Tên khách hàng không được để trống");
+
+            // Mặc định nợ = 0 khi mới tạo
+            customer.CurrentDebt = 0;
+
+            _context.Customers.Add(customer);
             await _context.SaveChangesAsync();
 
-            return Ok(new { Success = true, Message = "Thêm khách hàng thành công!", CustomerId = newCustomer.Id });
+            return Ok(new { Message = "Tạo khách hàng thành công!", CustomerId = customer.Id });
         }
-    }
 
-    // Class hứng dữ liệu gửi lên (DTO)
-    public class CreateCustomerRequest
-    {
-        public string FullName { get; set; } = "";
-        public string PhoneNumber { get; set; } = "";
-        public string Address { get; set; } = "";
+        // ==========================================
+        // 3. GET: api/customers/{id}/history
+        // ==========================================
+        [HttpGet("{id}/history")]
+        public async Task<IActionResult> GetHistory(Guid id)
+        {
+            // Kiểm tra khách có tồn tại không trước
+            var customer = await _context.Customers.FindAsync(id);
+            if (customer == null)
+            {
+                return NotFound(new { Message = "Khách hàng không tồn tại." });
+            }
+
+            // Tính tổng nợ thực tế từ Log (để đối chiếu)
+            var totalDebt = await _context.DebtLogs
+                .Where(d => d.CustomerId == id)
+                .SumAsync(d => d.Amount);
+
+            // Lấy danh sách đơn hàng
+            var orders = await _context.Orders
+                .Where(o => o.CustomerId == id)
+                .OrderByDescending(o => o.OrderDate)
+                .Select(o => new OrderHistoryItemDto
+                {
+                    Id = o.Id,
+                    OrderCode = o.OrderCode,
+                    TotalAmount = o.TotalAmount,
+                    Status = o.Status,
+                    OrderDate = o.OrderDate,
+                    PaymentMethod = o.PaymentMethod
+                })
+                .ToListAsync();
+
+            var response = new CustomerHistoryResponse
+            {
+                CustomerId = id,
+                CurrentDebt = customer.CurrentDebt, // Lấy CurrentDebt từ bảng Customer cho chuẩn xác
+                OrderCount = orders.Count,
+                Orders = orders
+            };
+
+            return Ok(response);
+        }
+
+        // ==========================================
+        // 4. POST: api/customers/pay-debt (Trả nợ)
+        // ==========================================
+        [HttpPost("pay-debt")]
+        public async Task<IActionResult> PayDebt([FromBody] PayDebtRequest request)
+        {
+            if (request.Amount <= 0)
+                return BadRequest(new { Message = "Số tiền trả phải lớn hơn 0." });
+
+            // 1. Kiểm tra khách hàng
+            var customer = await _context.Customers.FindAsync(request.CustomerId);
+            if (customer == null)
+                return NotFound(new { Message = "Khách hàng không tồn tại." });
+
+            // 2. Ghi log trả nợ (Amount ÂM để trừ nợ)
+            var debtLog = new DebtLog
+            {
+                Id = Guid.NewGuid(), // Tạo ID mới cho log
+                CustomerId = request.CustomerId,
+// Kiểm tra nếu StoreId gửi lên là rỗng (Guid.Empty) thì lấy StoreId của khách hàng
+StoreId = (request.StoreId == Guid.Empty) ? customer.StoreId : request.StoreId,                Amount = -request.Amount,         // 👈 DẤU TRỪ QUAN TRỌNG
+                Action = "Repayment",
+                Reason = "Khách thanh toán nợ",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.DebtLogs.Add(debtLog);
+
+            // 3. Cập nhật nhanh CurrentDebt trong Customer
+            customer.CurrentDebt -= request.Amount;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                Message = "Thanh toán nợ thành công!",
+                NewDebt = customer.CurrentDebt
+            });
+        }
     }
 }

@@ -7,16 +7,15 @@ namespace BizFlow.ProductAPI.DbModels
     public class Inventory
     {
         [Key]
-        [ForeignKey("Product")]
-        public int ProductId { get; set; } // Khóa chính cũng là khóa ngoại
+        public int Id { get; set; }
 
-        public decimal Quantity { get; set; } = 0;
+        public int ProductId { get; set; }
+        [ForeignKey("ProductId")]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public Product Product { get; set; }
 
-        public decimal MinStockLevel { get; set; } = 10; // Cảnh báo khi sắp hết
+        public double Quantity { get; set; } = 0; // Tồn kho tính theo BaseUnit (VD: 5000 Kg)
 
         public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
-
-        // Nối về Product
-        public Product Product { get; set; } = null!;
     }
 }

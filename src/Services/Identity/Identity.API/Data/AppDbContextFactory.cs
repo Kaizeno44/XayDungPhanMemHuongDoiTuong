@@ -8,15 +8,14 @@ namespace Identity.API.Data
     {
         public AppDbContext CreateDbContext(string[] args)
         {
-            // 1. Tạo bộ cấu hình
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-            // 2. Điền chuỗi kết nối trực tiếp vào đây (Hardcode để chạy lệnh cho mượt)
-            var connectionString = "Server=localhost;Port=3306;Database=BizFlow_Identity;User=root;Password=123456;";
+            // Chuỗi kết nối đến PostgreSQL (Đã chuẩn)
+            var connectionString = "Host=127.0.0.1;Port=5432;Database=bizflow_identity_db;Username=admin;Password=Password123!;";
             
-            optionsBuilder.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+            // 👇 SỬA Ở ĐÂY: Chỉ truyền connectionString, XÓA đoạn ServerVersion...
+            optionsBuilder.UseNpgsql(connectionString); 
 
-            // 3. Trả về AppDbContext đã được cấu hình
             return new AppDbContext(optionsBuilder.Options);
         }
     }

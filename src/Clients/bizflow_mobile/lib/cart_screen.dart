@@ -2,12 +2,12 @@ import 'package:bizflow_mobile/cart_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-// Đảm bảo đường dẫn import đúng:
 import 'checkout_screen.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
+  // Store ID này phải là GUID chính xác có trong Database
   static const String currentStoreId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
   @override
@@ -93,7 +93,6 @@ class CartScreen extends StatelessWidget {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        // ignore: deprecated_member_use
                         color: Colors.black.withOpacity(0.1),
                         blurRadius: 10,
                         offset: const Offset(0, -5),
@@ -130,10 +129,9 @@ class CartScreen extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  // ĐÃ SỬA: Chỉ cần truyền storeId
+                                  // ĐÃ SỬA: Chỉ truyền storeId, không truyền customerId rỗng nữa
                                   builder: (_) => const CheckoutScreen(
                                     storeId: currentStoreId,
-                                    customerId: '',
                                   ),
                                 ),
                               );

@@ -10,13 +10,12 @@ import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
 import '../models.dart';
 import 'order_history_screen.dart';
-// <--- NHỚ IMPORT MÀN HÌNH MỚI NÀY
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({
     super.key,
     required this.storeId,
-    required String customerId,
+    // ĐÃ XÓA: required String customerId (Không cần thiết)
   });
 
   final String storeId;
@@ -96,16 +95,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final url = Uri.parse(ApiConfig.orders);
     final requestBody = {
-      "customerId": selectedCustomerId,
+      "customerId": selectedCustomerId, // Đây sẽ là GUID lấy từ Dropdown
       "storeId": widget.storeId,
       "paymentMethod": selectedPaymentMethod,
       "items": cart.items.map((e) => e.toJson()).toList(),
     };
 
+    // DEBUG LOG
+    print("🟡 Body gửi đi: ${jsonEncode(requestBody)}");
+
     try {
       final response = await http
           .post(url, headers: ApiConfig.headers, body: jsonEncode(requestBody))
           .timeout(const Duration(seconds: 30));
+
+      print("🔵 Status: ${response.statusCode}");
+      print("🔵 Body phản hồi: ${response.body}");
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         cart.clearCart();
@@ -116,7 +121,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         String errorMsg = response.body;
         try {
           final errJson = jsonDecode(response.body);
-          errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
+          // Xử lý thông báo lỗi từ Validation hoặc Logic
+          if (errJson['errors'] != null) {
+            errorMsg = errJson['errors'].toString();
+          } else {
+            errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
+          }
         } catch (_) {}
         if (mounted) _showSnackBar("Lỗi: $errorMsg");
       }
@@ -133,7 +143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // --- DIALOG THÀNH CÔNG (Cập nhật logic nút In) ---
+  // --- DIALOG THÀNH CÔNG ---
   void _showSuccessDialog(
     List<CartItem> items,
     double total,
@@ -166,12 +176,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           OutlinedButton(
             onPressed: () {
               Navigator.of(ctx).pop(); // Đóng Dialog
-              Navigator.of(ctx).pop(); // Về màn hình trước
+              Navigator.of(ctx).pop(); // Về màn hình trước (Cart)
             },
             child: const Text("Đóng"),
           ),
-
-          // NÚT IN / SHARE ĐÃ ĐƯỢC CẬP NHẬT
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
@@ -180,10 +188,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             icon: const Icon(Icons.print, size: 18),
             label: const Text("In / Share"),
             onPressed: () {
-              // 1. Đóng Dialog hiện tại
               Navigator.of(ctx).pop();
-
-              // 2. Chuyển sang màn hình Xem trước (Có nút Share xịn)
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -196,7 +201,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ),
               );
-              // Lưu ý: Không cần pop thêm lần nữa ở đây, vì user sẽ xem preview xong mới quay lại
             },
           ),
         ],
@@ -229,7 +233,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       prefixIcon: Icon(Icons.person),
                     ),
                     isExpanded: true,
-                    initialValue: selectedCustomerId,
+                    value: selectedCustomerId,
                     hint: const Text("-- Vui lòng chọn khách hàng --"),
                     items: customers
                         .map(
@@ -284,11 +288,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               title: const Text("Tiền mặt"),
               subtitle: const Text("Thanh toán ngay"),
               value: "Cash",
-              // ignore: deprecated_member_use
               groupValue: selectedPaymentMethod,
               activeColor: Colors.green,
               secondary: const Icon(Icons.money, color: Colors.green),
-              // ignore: deprecated_member_use
               onChanged: (val) =>
                   setState(() => selectedPaymentMethod = val.toString()),
             ),
@@ -296,14 +298,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               title: const Text("Ghi nợ"),
               subtitle: const Text("Thêm vào công nợ"),
               value: "Debt",
-              // ignore: deprecated_member_use
               groupValue: selectedPaymentMethod,
               activeColor: Colors.red,
               secondary: const Icon(
                 Icons.account_balance_wallet,
                 color: Colors.red,
               ),
-              // ignore: deprecated_member_use
               onChanged: (val) =>
                   setState(() => selectedPaymentMethod = val.toString()),
             ),

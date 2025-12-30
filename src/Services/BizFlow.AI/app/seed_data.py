@@ -1,29 +1,85 @@
 from app.services.rag_service import rag_client
 import time
 
-# Dữ liệu này PHẢI KHỚP với Database của Person B (Product Service)
-# ID 101, 102... là giả định, bạn hãy thống nhất với team Mobile
+# [QUAN TRỌNG] Danh sách này PHẢI GIỐNG HỆT dữ liệu bên Product Service (MySQL)
+# Hãy bảo Person B gửi cho bạn danh sách sản phẩm họ đã tạo.
+# Dưới đây là danh sách mẫu chuẩn cho Demo VLXD:
+
 sample_products = [
-    {"id": "101", "name": "Xi măng Hà Tiên đa dụng", "unit": "bao", "price": 85000, "code": "XM_HT"},
-    {"id": "102", "name": "Xi măng Nghi Sơn", "unit": "bao", "price": 82000, "code": "XM_NS"},
-    {"id": "103", "name": "Xi măng trắng", "unit": "kg", "price": 12000, "code": "XM_TR"},
-    {"id": "201", "name": "Cát vàng xây tô", "unit": "khối", "price": 450000, "code": "CAT_VANG"},
-    {"id": "202", "name": "Cát san lấp", "unit": "khối", "price": 200000, "code": "CAT_DEN"},
-    {"id": "301", "name": "Đá 1x2 bê tông", "unit": "khối", "price": 380000, "code": "DA_12"},
-    {"id": "401", "name": "Gạch ống 4 lỗ", "unit": "viên", "price": 1200, "code": "GACH_ONG"},
-    {"id": "501", "name": "Thép cuộn Pomina", "unit": "kg", "price": 18000, "code": "THEP_CUON"}
+    # Nhóm Xi măng
+    {
+        "id": "1",  # ID trong MySQL thường bắt đầu từ 1
+        "name": "Xi măng Hà Tiên Đa Dụng", 
+        "unit": "bao", 
+        "price": 88000, 
+        "code": "XM_HT",
+        "image": "https://vatlieuxaydung.com/images/ximang-hatien.jpg" 
+    },
+    {
+        "id": "2", 
+        "name": "Xi măng Nghi Sơn PCB40", 
+        "unit": "bao", 
+        "price": 82000, 
+        "code": "XM_NS",
+        "image": "https://vatlieuxaydung.com/images/ximang-nghison.jpg"
+    },
+    
+    # Nhóm Cát - Đá
+    {
+        "id": "3", 
+        "name": "Cát vàng xây tô (Hạt lớn)", 
+        "unit": "khối", 
+        "price": 450000, 
+        "code": "CAT_VANG",
+        "image": ""
+    },
+    {
+        "id": "4", 
+        "name": "Đá 1x2 Xanh (Đổ bê tông)", 
+        "unit": "khối", 
+        "price": 380000, 
+        "code": "DA_12",
+        "image": ""
+    },
+    
+    # Nhóm Sắt Thép
+    {
+        "id": "5", 
+        "name": "Thép cuộn Pomina Ø6", 
+        "unit": "kg", 
+        "price": 18500, 
+        "code": "THEP_POMINA",
+        "image": ""
+    },
+    {
+        "id": "6", 
+        "name": "Thép thanh vằn Hòa Phát CB300", 
+        "unit": "cây", 
+        "price": 115000, 
+        "code": "THEP_HP",
+        "image": ""
+    },
+
+    # Nhóm Gạch
+    {
+        "id": "7", 
+        "name": "Gạch ống 4 lỗ Tuynel", 
+        "unit": "viên", 
+        "price": 1300, 
+        "code": "GACH_ONG",
+        "image": ""
+    }
 ]
 
 def run_seed():
-    print("⏳ Đang chờ ChromaDB khởi động...")
-    time.sleep(2)
-    print("🚀 Bắt đầu nạp dữ liệu vector...")
+    print("⏳ Đang đợi ChromaDB khởi động...")
+    time.sleep(3) 
+    
+    print(f"🚀 Đang nạp {len(sample_products)} sản phẩm chuẩn vào Vector DB...")
     rag_client.add_products(sample_products)
     
-    # Test thử luôn
-    print("\n🔎 Test tìm kiếm: 'lấy bao xi măng hà tiên'")
-    result = rag_client.search_product("lấy bao xi măng hà tiên")
-    print(f"👉 Kết quả: {result}")
+    print("✅ Đồng bộ dữ liệu hoàn tất!")
+    print("👉 AI Service đã sẵn sàng phục vụ Mobile App.")
 
 if __name__ == "__main__":
     run_seed()

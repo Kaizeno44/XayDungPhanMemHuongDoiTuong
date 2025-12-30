@@ -1,102 +1,107 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # <--- [MỚI] Import thư viện CORS
 from pydantic import BaseModel
-from typing import List, Any
+from typing import List, Any, Optional
 import os
 import google.generativeai as genai
 
-# Import 2 service vừa viết
+# Import service
 from app.services.stt_service import transcribe_audio
 from app.services.nlp_service import extract_order_info
-from app.services.rag_service import rag_client # Import client đã nâng cấp
+from app.services.rag_service import rag_client
 
 app = FastAPI(title="BizFlow AI Service", version="1.0.0")
 
-# --- MODEL RESPONSE ---
+# --- [MỚI] CẤU HÌNH CORS (BẮT BUỘC CHO MOBILE APP) ---
+# Cho phép mọi nguồn (Mobile, Web Admin) gọi vào API này
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Cho phép tất cả (Demo thì để * cho tiện)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- MODEL RESPONSE (Đã chuẩn hóa theo Mobile App của Person C) ---
 class DraftOrderResponse(BaseModel):
     success: bool
     message: str
-    data: Any # Cho phép linh động JSON trả về
+    data: Any 
 
 @app.on_event("startup")
 async def startup_event():
+    # Kiểm tra và cấu hình Gemini
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
             genai.configure(api_key=api_key)
-            print("======= DANH SÁCH MODEL GEMINI KHẢ DỤNG =======")
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    print(f"- {m.name}")
-            print("===============================================")
+            print("✅ Gemini API Key configured successfully")
     except Exception as e:
-        print(f"Lỗi check model: {e}")
+        print(f"⚠️ Warning: Gemini configuration failed: {e}")
 
 @app.get("/")
 def health_check():
     chroma_status = rag_client.check_health()
-    return {"service": "AI Service Real", "chroma": chroma_status}
+    return {"service": "AI Service Ready", "chroma_connected": chroma_status is not None}
 
 @app.post("/api/ai/analyze-voice", response_model=DraftOrderResponse)
 async def analyze_voice(file: UploadFile = File(...)):
-    # 1. Validation & STT (Giữ nguyên)
-    if not file.filename.lower().endswith(('.wav', '.mp3', '.m4a', '.ogg')):
-        return DraftOrderResponse(success=False, message="Sai định dạng file", data=None)
-    
-    file_bytes = await file.read()
-    text_result = await transcribe_audio(file_bytes, file.filename)
-    
-    if not text_result:
-        return DraftOrderResponse(success=False, message="Không nghe rõ âm thanh", data=None)
-    
-    print(f"📢 Text nghe được: {text_result}")
+    # 1. Validation
+    if not file.filename.lower().endswith(('.wav', '.mp3', '.m4a', '.ogg', '.aac')):
+         # Mobile Flutter thường gửi file .m4a hoặc .aac
+        return DraftOrderResponse(success=False, message="Định dạng file không hỗ trợ", data=None)
 
-    # 2. NLP Extract (Giữ nguyên - Lấy ra danh sách sản phẩm thô)
+    # 2. Đọc file
+    file_bytes = await file.read()
+    
+    # 3. Speech-to-Text
+    text_result = await transcribe_audio(file_bytes, file.filename)
+    if not text_result:
+        return DraftOrderResponse(success=False, message="Không nghe rõ, vui lòng nói lại", data=None)
+    
+    print(f"📢 Khách nói: {text_result}")
+
+    # 4. NLP Extract (Lấy intent thô)
     draft_order = extract_order_info(text_result)
     
     if not draft_order or not draft_order.get("items"):
-         # Nếu Gemini không trích xuất được gì, trả về lỗi luôn
          return DraftOrderResponse(success=False, message="Không hiểu ý định mua hàng", data=draft_order)
 
-    # ==================================================================
-    # 3. RAG: ĐI TÌM ID SẢN PHẨM TRONG CHROMADB (PHẦN MỚI CỦA TUẦN 4)
-    # ==================================================================
+    # 5. RAG: Mapping sản phẩm với Database của Person B
     enriched_items = []
     
     for item in draft_order["items"]:
         raw_name = item["product_name"]
         
-        # Tìm trong ChromaDB (Vector Search)
-        # Ví dụ: raw_name="xi măng hà tiên" -> Tìm thấy ID="101"
+        # Tìm kiếm trong ChromaDB
         search_result = rag_client.search_product(raw_name)
         
         if search_result:
-            # Nếu tìm thấy, bổ sung thông tin ID và Giá vào
-            item["product_id"] = search_result["id"]
-            item["official_name"] = search_result["name"]
-            item["unit_price"] = search_result["metadata"]["price"]
+            # [QUAN TRỌNG] Gán ID thật từ DB để Person C tạo đơn
+            item["product_id"] = int(search_result["id"]) # Chuyển về int cho khớp .NET
+            item["product_name"] = search_result["name"]  # Lấy tên chuẩn
+            item["price"] = search_result["metadata"]["price"]
+            item["image_url"] = search_result["metadata"].get("image", "")
             
+            # Logic check đơn vị tính (Nếu khách nói 'bao' mà DB có 'bao')
+            # Để đơn giản cho demo, ta tin tưởng đơn vị khách nói
+
             # Tính thành tiền tạm tính (cho App hiển thị chơi)
             item["total_price"] = item["quantity"] * search_result["metadata"]["price"]
             
             print(f"✅ Mapped: '{raw_name}' -> ID: {search_result['id']}")
         else:
-            # Nếu không tìm thấy trong DB
             item["product_id"] = None
-            item["note"] = "Không tìm thấy sản phẩm này trong kho"
+            item["note"] = "Chưa tìm thấy mã sản phẩm này"
             print(f"❌ Not found: '{raw_name}'")
             
         enriched_items.append(item)
 
-    # Cập nhật lại danh sách items đã có ID
     draft_order["items"] = enriched_items
     draft_order["raw_text_spoken"] = text_result
 
     return DraftOrderResponse(
         success=True,
-        message="Phân tích và tìm kiếm sản phẩm thành công",
+        message="Đã xử lý xong yêu cầu",
         data=draft_order
     )
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

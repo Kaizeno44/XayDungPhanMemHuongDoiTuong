@@ -56,7 +56,7 @@ services:
     environment:
       - CHROMA_HOST=bizflow_chroma
       - CHROMA_PORT=8000
-      - GEMINI_API_KEY=xxxx # Liên hệ person D để lấy
+      - GEMINI_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx # Liên hệ person D để lấy
     ports:
       - "5005:8000"
     volumes:

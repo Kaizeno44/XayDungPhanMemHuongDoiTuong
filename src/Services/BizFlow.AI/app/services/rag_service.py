@@ -30,27 +30,27 @@ class RagService:
         return None
 
     def add_products(self, products: List[Dict]):
-        """
-        Nạp dữ liệu sản phẩm vào ChromaDB.
-        """
         if not self.collection: return
         
-        # ChromaDB yêu cầu List các ID, Document (để search), và Metadata (để lưu thông tin phụ)
         ids = [str(p["id"]) for p in products]
-        documents = [p["name"] for p in products] 
-        metadatas = [{"price": p["price"], "unit": p["unit"], "code": p.get("code", "")} for p in products]
+        documents = [p["name"] for p in products]
+        
+        # [MỚI] Lưu thêm image và code vào metadata
+        metadatas = [{
+            "price": p["price"], 
+            "unit": p["unit"], 
+            "code": p.get("code", ""),
+            "image": p.get("image", "")
+        } for p in products]
 
         self.collection.upsert(
             ids=ids,
             documents=documents,
             metadatas=metadatas
         )
-        print(f"✅ Đã nạp {len(ids)} sản phẩm vào ChromaDB.")
+        print(f"✅ Đã nạp {len(ids)} sản phẩm.")
 
     def search_product(self, query_text: str, n_results=1):
-        """
-        Tìm sản phẩm gần giống nhất với query_text
-        """
         if not self.collection: return None
 
         results = self.collection.query(
@@ -58,13 +58,13 @@ class RagService:
             n_results=n_results
         )
         
-        # Kiểm tra xem có kết quả không
         if results and results['ids'] and len(results['ids'][0]) > 0:
+            # Trả về đầy đủ thông tin
             return {
-                "id": results['ids'][0][0],           # ProductId (Quan trọng nhất)
-                "name": results['documents'][0][0],   # Tên chuẩn trong DB
-                "metadata": results['metadatas'][0][0], # Giá, Đơn vị
-                "distance": results['distances'][0][0] # Độ sai lệch
+                "id": results['ids'][0][0],
+                "name": results['documents'][0][0],
+                "metadata": results['metadatas'][0][0], # Chứa price, unit, image
+                "distance": results['distances'][0][0]
             }
         return None
 

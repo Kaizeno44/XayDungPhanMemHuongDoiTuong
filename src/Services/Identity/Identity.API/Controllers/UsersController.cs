@@ -23,18 +23,21 @@ namespace Identity.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
-            // Logic mới: Phải JOIN bảng UserRoles và Role để lấy tên quyền
             var users = await _context.Users
+                // Join các bảng lại
                 .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
                 .Select(u => new 
                 {
-                    u.Id,
-                    u.Email,
-                    u.FullName,
-                    // Lấy danh sách Role (Vì cấu trúc mới 1 người có thể nhiều quyền)
-                    Roles = u.UserRoles.Select(ur => ur.Role.Name).ToList(),
-                    Status = u.IsActive ? "Active" : "Inactive"
+                    id = u.Id,          // 👈 Sửa thành chữ thường cho chuẩn JSON (Frontend thích điều này)
+                    email = u.Email,
+                    fullName = u.FullName,
+                    
+                    // 👇 QUAN TRỌNG: Lấy Role đầu tiên và đặt tên biến là "role" (viết thường)
+                    // Logic: Nếu có role thì lấy tên, nếu không thì ghi "N/A"
+                    // Dịch: Thử lấy Role đầu tiên, nếu có (?) thì lấy tên, nếu null (??) thì trả về "N/A"
+                    role = u.UserRoles.Select(ur => ur.Role.Name).FirstOrDefault() ?? "N/A",                        
+                    status = u.IsActive ? "Active" : "Inactive"
                 })
                 .ToListAsync();
 
@@ -45,53 +48,60 @@ namespace Identity.API.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
         {
-            // A. Kiểm tra email trùng
+            // 1. Check trùng Email
             if (await _context.Users.AnyAsync(u => u.Email == request.Email))
             {
                 return BadRequest(new { message = "Email này đã được sử dụng!" });
             }
 
+            // 2. MẶC ĐỊNH LÀ EMPLOYEE (Không cần if/else phức tạp nữa)
+            // Vì chức năng này là "Thêm nhân viên", nên chắc chắn vai trò là Employee
+            var roleName = "Employee"; 
+
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
+            if (role == null)
+            {
+                return StatusCode(500, "Lỗi hệ thống: Chưa cấu hình Role 'Employee' trong Database.");
+            }
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // B. Tạo User mới (Theo chuẩn Entity mới)
+                // 3. Tạo User
                 var user = new User
                 {
                     Id = Guid.NewGuid(),
                     Email = request.Email,
                     FullName = request.FullName,
-                    PasswordHash = request.Password, // Lưu ý: Thực tế hãy Hash password tại đây
+                    PasswordHash = request.Password, // Nhớ hash password sau này nhé
                     IsActive = true,
-                    IsOwner = false, // Nhân viên thì không phải chủ shop
-                    StoreId = null   // Tạm thời null, sau này Admin sẽ gán vào Store
+                    IsOwner = false,
+                    // 👇 QUAN TRỌNG:
+                    // Nếu người đang gọi API này là Owner (ông Ba Tèo), 
+                    // thì nhân viên mới tạo ra PHẢI thuộc về Store của ông Ba Tèo.
+                    // (Hiện tại bạn đang để null, tạm thời ok, nhưng sau này phải sửa chỗ này để lấy StoreId từ Token của người tạo)
+                    StoreId = null 
                 };
 
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
 
-                // C. Tìm Role tương ứng trong DB (Ví dụ: "Employee")
-                // Nếu request không gửi Role thì mặc định là Employee
-                var roleName = string.IsNullOrEmpty(request.Role) ? "Employee" : request.Role;
-                var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
-
-                if (role != null)
-                {
-                    // D. Gán Role cho User (Tạo bản ghi trong bảng trung gian)
-                    _context.UserRoles.Add(new UserRole 
-                    { 
-                        UserId = user.Id, 
-                        RoleId = role.Id 
-                    });
-                    await _context.SaveChangesAsync();
-                }
-
+                // 4. Gán Role Employee
+                _context.UserRoles.Add(new UserRole 
+                { 
+                    UserId = user.Id, 
+                    RoleId = role.Id 
+                });
+                
+                await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
-                return Ok(new { message = "Tạo nhân viên thành công!" });
+
+                return Ok(new { message = "Tạo nhân viên bán hàng thành công!" });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                return StatusCode(500, "Lỗi khi tạo user: " + ex.Message);
+                return StatusCode(500, "Lỗi: " + ex.Message);
             }
         }
     }

@@ -46,6 +46,18 @@ services:
       - "8080:8080"
     networks:
       - bizflow-network
+  # 5. Message Broker (RabbitMQ)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: bizflow_rabbitmq
+    ports:
+      - "5672:5672"   # Cổng để code kết nối
+      - "15672:15672" # Cổng Web Admin (để vào xem tin nhắn chạy)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - bizflow-network
 
   # 5. AI Service (Python FastAPI)
   ai_service:

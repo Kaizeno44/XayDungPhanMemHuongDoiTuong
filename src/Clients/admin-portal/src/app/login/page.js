@@ -3,10 +3,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios'; 
 import Cookies from 'js-cookie';
+import { jwtDecode } from "jwt-decode"; 
 
 export default function LoginPage() {
   const router = useRouter();
-  // Điền sẵn thông tin chuẩn trong Database để đỡ phải gõ lại nhiều lần khi test
+  
+  // Tài khoản test mặc định
   const [email, setEmail] = useState('superadmin@bizflow.com');
   const [password, setPassword] = useState('admin');
   const [loading, setLoading] = useState(false);
@@ -18,30 +20,44 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Gọi API Identity chạy trên HTTPS 5001
+      // 1. Gọi API Backend (Nhớ check kỹ port 5001 hay 5000 tùy máy bạn)
       const response = await axios.post('https://localhost:5001/api/auth/login', {
         email,
         password
       });
 
-      // Lấy token từ response (API trả về { token: "...", user: {...} })
       const token = response.data.token;
+      if (!token) throw new Error("Không nhận được Token!");
 
-      if (!token) {
-        throw new Error("Không tìm thấy token trong phản hồi!");
+      // 2. Giải mã Token để xem ai đang đăng nhập
+      const decoded = jwtDecode(token);
+      
+      // Lấy role (xử lý cả trường hợp role tên dài hoặc ngắn)
+      const userRole = decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || decoded.role;
+
+      // 3. ĐIỀU HƯỚNG THEO PHÂN QUYỀN (ROUTER GUARD)
+      if (userRole === 'SuperAdmin') {
+          Cookies.set('accessToken', token, { expires: 1 });
+          router.push('/dashboard'); // Vào trang Admin hệ thống
+      } 
+      else if (userRole === 'Owner') {
+          Cookies.set('accessToken', token, { expires: 1 });
+          router.push('/merchant/dashboard'); // Vào trang Ông chủ
+      } 
+      // 👇 CHẶN NHÂN VIÊN TẠI ĐÂY 👇
+      else if (userRole === 'Employee') {
+          alert("⛔ TÀI KHOẢN NHÂN VIÊN KHÔNG ĐƯỢC PHÉP TRUY CẬP WEB!\nVui lòng tải Mobile App để bán hàng.");
+          Cookies.remove('accessToken'); // Xóa token ngay lập tức
+          // Không chuyển trang, giữ nguyên ở Login
+      } 
+      else {
+          setError("Tài khoản không có quyền truy cập hợp lệ!");
       }
-
-      // 1. QUAN TRỌNG: Đặt tên cookie là "accessToken" để khớp với Dashboard
-      Cookies.set('accessToken', token, { expires: 1 }); // Hết hạn sau 1 ngày
-
-      // 2. Chuyển hướng thẳng vào Dashboard (thay vì trang chủ /)
-      router.push('/dashboard'); 
 
     } catch (err) {
       console.error(err);
-      // Kiểm tra lỗi chi tiết từ server trả về (nếu có)
-      const serverMessage = err.response?.data?.message || err.response?.data;
-      setError(serverMessage || 'Đăng nhập thất bại! Kiểm tra lại Backend (5001) hoặc mật khẩu.');
+      const msg = err.response?.data?.message || err.message;
+      setError(msg || 'Đăng nhập thất bại!');
     } finally {
       setLoading(false);
     }
@@ -50,48 +66,25 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 font-sans">
       <div className="bg-white p-8 rounded-xl shadow-xl max-w-md w-full border border-gray-100">
-        <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-blue-600">BizFlow</h1>
-            <p className="text-gray-500 mt-2">Đăng nhập quản trị viên</p>
-        </div>
+        <h1 className="text-3xl font-bold text-center text-blue-600 mb-2">BizFlow</h1>
+        <p className="text-center text-gray-500 mb-6">Đăng nhập hệ thống</p>
         
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 text-sm text-center border border-red-100">
-            ⚠️ {error}
-          </div>
-        )}
+        {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm text-center">⚠️ {error}</div>}
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-gray-700 text-sm font-semibold mb-2">Email</label>
-            <input
-              type="email"
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 transition-all"
-              placeholder="superadmin@bizflow.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <label className="block text-gray-700 text-sm font-bold mb-2">Email</label>
+            <input type="email" required className="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-
           <div>
-            <label className="block text-gray-700 text-sm font-semibold mb-2">Mật khẩu</label>
-            <input
-              type="password"
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 transition-all"
-              placeholder="••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <label className="block text-gray-700 text-sm font-bold mb-2">Mật khẩu</label>
+            <input type="password" required className="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all shadow-md hover:shadow-lg transform active:scale-95 ${loading ? 'opacity-70 cursor-wait' : ''}`}
-          >
-            {loading ? '⏳ Đang kết nối...' : 'Đăng Nhập'}
+          <button type="submit" disabled={loading}
+            className={`w-full p-3 text-white font-bold rounded bg-blue-600 hover:bg-blue-700 ${loading ? 'opacity-70' : ''}`}>
+            {loading ? 'Đang xử lý...' : 'Đăng Nhập'}
           </button>
         </form>
       </div>

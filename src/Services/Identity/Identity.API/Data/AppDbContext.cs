@@ -12,6 +12,8 @@ namespace Identity.API.Data
         public DbSet<User> Users { get; set; }
         public DbSet<Role> Roles { get; set; }
         public DbSet<UserRole> UserRoles { get; set; }
+
+        public DbSet<UserDevice> UserDevices { get; set; }
         public DbSet<Store> Stores { get; set; }
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
 

@@ -45,6 +45,7 @@ class Product {
   final String? description;
   final String? imageUrl;
   final List<ProductUnit> productUnits;
+  double inventoryQuantity; // Thêm trường tồn kho
 
   Product({
     required this.id,
@@ -52,6 +53,7 @@ class Product {
     this.description,
     this.imageUrl,
     required this.productUnits,
+    this.inventoryQuantity = 0.0, // Khởi tạo giá trị mặc định
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -66,6 +68,26 @@ class Product {
       description: json['description'],
       imageUrl: json['imageUrl'],
       productUnits: units,
+      inventoryQuantity: (json['inventory']?['quantity'] as num?)?.toDouble() ?? 0.0, // Lấy tồn kho từ API
+    );
+  }
+
+  // Phương thức copyWith để cập nhật sản phẩm
+  Product copyWith({
+    int? id,
+    String? name,
+    String? description,
+    String? imageUrl,
+    List<ProductUnit>? productUnits,
+    double? inventoryQuantity,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      productUnits: productUnits ?? this.productUnits,
+      inventoryQuantity: inventoryQuantity ?? this.inventoryQuantity,
     );
   }
 

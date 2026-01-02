@@ -35,4 +35,22 @@ namespace BizFlow.OrderAPI.DTOs
         public decimal TotalAmount { get; set; }
         public string Status { get; set; } = string.Empty;
     }
+
+    // DTO cho thông tin khách hàng (dùng khi lấy danh sách khách hàng)
+    public class CustomerDto
+    {
+        public Guid Id { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string? PhoneNumber { get; set; }
+        public string? Address { get; set; }
+        public decimal CurrentDebt { get; set; }
+        public Guid StoreId { get; set; }
+    }
+
+    // DTO wrapper để gửi danh sách yêu cầu kiểm tra tồn kho đến Product Service
+    public class CheckStockRequestWrapperDto
+    {
+        public List<CheckStockRequest> Requests { get; set; } = new List<CheckStockRequest>();
+    }
+
 }

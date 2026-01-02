@@ -13,13 +13,14 @@ namespace BizFlow.OrderAPI.Services
             _httpClient = httpClient;
         }
 
-        // ✅ CHECK STOCK (BATCH)
+        // ✅ CHECK STOCK (BATCH) - Đã sửa để gửi CheckStockRequestWrapperDto
         public async Task<List<CheckStockResult>> CheckStockAsync(
             List<CheckStockRequest> items)
         {
+            var wrapper = new CheckStockRequestWrapperDto { Requests = items };
             var response = await _httpClient.PostAsJsonAsync(
                 "/api/Products/check-stock",
-                items
+                wrapper
             );
 
             response.EnsureSuccessStatusCode();

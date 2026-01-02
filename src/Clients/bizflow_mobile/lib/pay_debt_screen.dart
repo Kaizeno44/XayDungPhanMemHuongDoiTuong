@@ -69,7 +69,9 @@ class _PayDebtScreenState extends State<PayDebtScreen> {
       return;
     }
 
-    if (amount > widget.currentDebt) {
+    // Sử dụng làm tròn (round) để tránh lỗi so sánh số thực (floating point precision)
+    // do VNĐ không có phần thập phân nhưng API có thể trả về số thực.
+    if (amount.round() > widget.currentDebt.round()) {
       _showSnackBar(
         "Số tiền trả không được lớn hơn nợ hiện tại",
         isError: true,

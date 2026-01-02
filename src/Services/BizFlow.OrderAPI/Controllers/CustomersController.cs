@@ -22,18 +22,18 @@ namespace BizFlow.OrderAPI.Controllers
         // 👉 API NÀY ĐỂ SỬA LỖI 404 BÊN FLUTTER
         // ==========================================
         [HttpGet]
-        public async Task<IActionResult> GetCustomers()
+        public async Task<ActionResult<IEnumerable<CustomerDto>>> GetCustomers()
         {
             var customers = await _context.Customers
                 .OrderBy(c => c.FullName) // Sắp xếp tên A-Z cho đẹp
-                .Select(c => new 
+                .Select(c => new CustomerDto // Sử dụng CustomerDto rõ ràng
                 {
-                    c.Id,
-                    c.FullName,
-                    c.PhoneNumber,
-                    c.Address,
-                    c.CurrentDebt,
-                    c.StoreId
+                    Id = c.Id,
+                    FullName = c.FullName,
+                    PhoneNumber = c.PhoneNumber,
+                    Address = c.Address,
+                    CurrentDebt = c.CurrentDebt,
+                    StoreId = c.StoreId
                 })
                 .ToListAsync();
 
@@ -135,7 +135,16 @@ StoreId = (request.StoreId == Guid.Empty) ? customer.StoreId : request.StoreId, 
             _context.DebtLogs.Add(debtLog);
 
             // 3. Cập nhật nhanh CurrentDebt trong Customer
-            customer.CurrentDebt -= request.Amount;
+            // Ép kiểu sang decimal để tính toán chính xác với tiền tệ
+            decimal paymentAmount = (decimal)request.Amount;
+            customer.CurrentDebt -= paymentAmount;
+
+            // 4. Chống nợ âm hoặc sai số nhỏ
+            // Nếu nợ còn lại nhỏ hơn 10đ (coi như bằng 0 cho VNĐ) hoặc bị âm do làm tròn
+            if (customer.CurrentDebt < 10)
+            {
+                customer.CurrentDebt = 0;
+            }
 
             await _context.SaveChangesAsync();
 

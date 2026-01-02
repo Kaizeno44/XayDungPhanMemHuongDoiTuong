@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using BizFlow.ProductAPI.Data;
 using BizFlow.ProductAPI.DbModels;
 using BizFlow.ProductAPI.DTOs;
+using BizFlow.ProductAPI.Hubs; // Thêm using cho ProductHub
+using Microsoft.AspNetCore.SignalR; // Thêm using cho SignalR
 // using Microsoft.AspNetCore.Authorization; // Mở lại khi có Auth
 
 namespace BizFlow.ProductAPI.Controllers
@@ -12,10 +14,12 @@ namespace BizFlow.ProductAPI.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly ProductDbContext _context;
+        private readonly IHubContext<ProductHub> _hubContext; // Inject IHubContext
 
-        public ProductsController(ProductDbContext context)
+        public ProductsController(ProductDbContext context, IHubContext<ProductHub> hubContext)
         {
             _context = context;
+            _hubContext = hubContext; // Gán hubContext
         }
 
         // ==========================================
@@ -275,7 +279,8 @@ namespace BizFlow.ProductAPI.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-
+                // Phát sóng cập nhật tồn kho qua SignalR
+                await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", request.ProductId, inventory.Quantity);
 
                 return Ok(new
                 {

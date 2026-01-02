@@ -1,7 +1,6 @@
 using BizFlow.OrderAPI.DTOs;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
-using System.Text.Json;
 
 namespace BizFlow.OrderAPI.Services
 {
@@ -16,62 +15,84 @@ namespace BizFlow.OrderAPI.Services
             _logger = logger;
         }
 
-        // ✅ 1. CHECK STOCK (BATCH) - ĐÃ SỬA CẤU TRÚC GỬI ĐI
+        // ✅ CHECK STOCK (BATCH)
         public async Task<List<CheckStockResult>> CheckStockAsync(List<CheckStockRequest> items)
         {
             try
             {
-                _logger.LogInformation("🔵 [CheckStock] Đang kiểm tra tồn kho cho {Count} sản phẩm...", items.Count);
+                _logger.LogInformation(
+                    "🔵 [CheckStock] Đang kiểm tra tồn kho cho {Count} sản phẩm...",
+                    items.Count
+                );
 
-                // --- FIX: ĐÓNG GÓI VÀO OBJECT WRAPPER ---
-                // ProductAPI yêu cầu: { "requests": [...] }
-                var payload = new { Requests = items }; 
+                // Product API yêu cầu wrapper
+                var payload = new
+                {
+                    Requests = items
+                };
 
-                var response = await _httpClient.PostAsJsonAsync("/api/Products/check-stock", payload);
+                var response = await _httpClient.PostAsJsonAsync(
+                    "/api/Products/check-stock",
+                    payload
+                );
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("🔴 [CheckStock] Lỗi từ ProductAPI ({Code}): {Error}", response.StatusCode, errorContent);
-                    
-                    // Ném lỗi chi tiết
+                    _logger.LogError(
+                        "🔴 [CheckStock] Lỗi từ ProductAPI ({Code}): {Error}",
+                        response.StatusCode,
+                        errorContent
+                    );
+
                     throw new HttpRequestException($"Lỗi ProductAPI: {errorContent}");
                 }
 
-                // Parse kết quả
                 var result = await response.Content.ReadFromJsonAsync<List<CheckStockResult>>();
-                
+
                 return result ?? new List<CheckStockResult>();
             }
             catch (Exception ex) when (ex is not HttpRequestException)
             {
                 _logger.LogError(ex, "🔴 [CheckStock] Lỗi kết nối hoặc parse JSON.");
-                throw; 
+                throw;
             }
         }
 
-        // ✅ 2. TRỪ KHO
+        // ✅ TRỪ KHO
         public async Task DeductStockAsync(int productId, int unitId, int quantity)
         {
             var payload = new
             {
                 productId = productId,
                 unitId = unitId,
-                quantityChange = -quantity // Số âm để trừ kho
+                quantityChange = -quantity
             };
 
             try
             {
-                _logger.LogInformation("🔵 [DeductStock] Đang trừ kho SP {ProductId}, Unit {UnitId}, SL {Qty}", productId, unitId, quantity);
+                _logger.LogInformation(
+                    "🔵 [DeductStock] Đang trừ kho SP {ProductId}, Unit {UnitId}, SL {Qty}",
+                    productId, unitId, quantity
+                );
 
-                var response = await _httpClient.PutAsJsonAsync("/api/Products/stock?mode=auto", payload);
+                var response = await _httpClient.PutAsJsonAsync(
+                    "/api/Products/stock?mode=auto",
+                    payload
+                );
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("🔴 [DeductStock] Thất bại ({Code}): {Error}", response.StatusCode, errorContent);
+                    _logger.LogError(
+                        "🔴 [DeductStock] Thất bại ({Code}): {Error}",
+                        response.StatusCode,
+                        errorContent
+                    );
 
-                    throw new InvalidOperationException($"Không thể trừ kho SP {productId}: {errorContent}");
+                    throw new InvalidOperationException(
+                        $"Không thể trừ kho SP {productId}: {errorContent}"
+                    );
                 }
 
                 _logger.LogInformation("🟢 [DeductStock] Trừ kho thành công.");

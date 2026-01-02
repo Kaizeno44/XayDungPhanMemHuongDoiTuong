@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models.dart'; // Import các model đã định nghĩa
+import 'config/api_config.dart'; // Import ApiConfig
 
 class ApiService {
-  static const String _baseUrl = 'http://10.0.2.2:5000/api'; // API Gateway URL (For Android Emulator)
-  // Đã thay đổi từ HTTPS sang HTTP để giải quyết lỗi chứng chỉ SSL trong môi trường phát triển.
-  // Nếu chạy trên thiết bị vật lý, cần thay đổi thành IP của máy tính host, ví dụ: 'http://192.168.1.x:5000/api'
-  // Nếu chạy trên Web, có thể dùng lại 'http://localhost:5000/api'
+  // Sử dụng các base URL từ ApiConfig
+  static final String _productApiBaseUrl = ApiConfig.productBaseUrl;
+  static final String _orderApiBaseUrl = ApiConfig.orderBaseUrl;
 
   Future<List<Product>> getProducts({String? keyword, int? categoryId, int page = 1, int pageSize = 10}) async {
     final Map<String, String> queryParams = {
@@ -20,7 +20,7 @@ class ApiService {
       queryParams['categoryId'] = categoryId.toString();
     }
 
-    final uri = Uri.parse('$_baseUrl/products').replace(queryParameters: queryParams);
+    final uri = Uri.parse('$_productApiBaseUrl/api/Products').replace(queryParameters: queryParams);
     final response = await http.get(uri);
 
     if (response.statusCode == 200) {
@@ -33,7 +33,7 @@ class ApiService {
   }
 
   Future<ProductPriceResult> getProductPrice(int productId, int unitId) async {
-    final uri = Uri.parse('$_baseUrl/products/$productId/price?unitId=$unitId');
+    final uri = Uri.parse('$_productApiBaseUrl/api/Products/$productId/price?unitId=$unitId');
     final response = await http.get(uri);
 
     if (response.statusCode == 200) {
@@ -44,7 +44,7 @@ class ApiService {
   }
 
   Future<SimpleCheckStockResult> simpleCheckStock(int productId, int unitId, double quantity) async {
-    final uri = Uri.parse('$_baseUrl/products/check-stock');
+    final uri = Uri.parse('$_productApiBaseUrl/api/Products/check-stock');
     final requestBody = {
       'requests': [
         {

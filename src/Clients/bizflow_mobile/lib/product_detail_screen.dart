@@ -60,13 +60,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _addToCart() async {
-    if (_selectedUnit == null) return;
+    debugPrint("ProductDetailScreen: _addToCart called.");
+    if (_selectedUnit == null) {
+      debugPrint("ProductDetailScreen: _selectedUnit is null. Cannot add to cart.");
+      return;
+    }
 
+    debugPrint("ProductDetailScreen: Checking stock for Product ID: ${widget.product.id}, Unit ID: ${_selectedUnit!.id}, Quantity: $_quantity");
     final stockResult = await _apiService.simpleCheckStock(
       widget.product.id,
       _selectedUnit!.id,
       _quantity.toDouble(),
     );
+    debugPrint("ProductDetailScreen: Stock check result - isEnough: ${stockResult.isEnough}, Message: ${stockResult.message}");
 
     if (!stockResult.isEnough) {
       // ignore: use_build_context_synchronously
@@ -76,6 +82,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
+      debugPrint("ProductDetailScreen: Not enough stock. Showing SnackBar and returning.");
       return;
     }
 
@@ -89,6 +96,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
     // ignore: use_build_context_synchronously
     Provider.of<CartProvider>(context, listen: false).addToCart(cartItem);
+    debugPrint("ProductDetailScreen: Item added to cart: ${cartItem.productName}, Quantity: ${cartItem.quantity}");
+
     // ignore: use_build_context_synchronously
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -98,6 +107,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         duration: const Duration(seconds: 1),
       ),
     );
+    debugPrint("ProductDetailScreen: Showing success SnackBar.");
   }
 
   @override

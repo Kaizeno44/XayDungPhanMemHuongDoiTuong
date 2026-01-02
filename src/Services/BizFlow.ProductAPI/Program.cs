@@ -46,6 +46,18 @@ builder.Services.AddControllers()
     
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSignalR(); // Thêm SignalR services
+
+// Thêm CORS policy cho SignalR
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder => builder
+            .WithOrigins("http://localhost:3000", "http://10.0.2.2:5000") // Cho phép từ Flutter app và Gateway
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()); // Bắt buộc phải có dòng này với SignalR
+});
 
 var app = builder.Build();
 
@@ -64,6 +76,7 @@ app.UseAuthentication();
 app.UseAuthorization();  
 
 app.MapControllers();
+app.MapHub<BizFlow.ProductAPI.Hubs.ProductHub>("/hubs/products"); // Map SignalR Hub
 
 // ==========================================
 // 5. TỰ ĐỘNG TẠO DỮ LIỆU MẪU (ĐÃ SỬA)

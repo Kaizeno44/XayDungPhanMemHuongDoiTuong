@@ -79,7 +79,7 @@ app.MapControllers();
 app.MapHub<BizFlow.ProductAPI.Hubs.ProductHub>("/hubs/products"); // Map SignalR Hub
 
 // ==========================================
-// 5. TỰ ĐỘNG TẠO DỮ LIỆU MẪU (ĐÃ SỬA)
+// 5. TỰ ĐỘNG TẠO DỮ LIỆU MẪU (SỬ DỤNG SEEDER)
 // ==========================================
 using (var scope = app.Services.CreateScope())
 {
@@ -87,24 +87,9 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<ProductDbContext>();
-        
-        // 🔥🔥🔥 DÒNG QUAN TRỌNG NHẤT VỪA ĐƯỢC THÊM VÀO ĐÂY 🔥🔥🔥
-        // Lệnh này kiểm tra xem DB có chưa. Chưa có thì tạo mới + tạo bảng luôn.
-        context.Database.EnsureCreated(); 
-        // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-
-        // Sau khi đảm bảo DB đã có, mới được phép truy vấn
-        if (!context.Categories.Any())
-        {
-            context.Categories.Add(new Category 
-            { 
-                Name = "Vật liệu xây dựng",
-                Code = "VL_XD" 
-            });
-            
-            context.SaveChanges();
-            Console.WriteLine("--> Product Service: Đã tạo DB + dữ liệu mẫu thành công!");
-        }
+        // Gọi Seeder để khởi tạo dữ liệu
+        await BizFlow.ProductAPI.Data.ProductDataSeeder.SeedAsync(context);
+        Console.WriteLine("--> Product Service: Database check & Seeding completed.");
     }
     catch (Exception ex)
     {

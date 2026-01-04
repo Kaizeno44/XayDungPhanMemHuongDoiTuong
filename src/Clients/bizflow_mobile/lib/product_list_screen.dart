@@ -11,6 +11,7 @@ import 'cart_screen.dart';
 import 'product_service.dart'; // Import service vừa tạo
 import 'core/config/api_config.dart'; // Import ApiConfig
 import 'product_detail_screen.dart'; // Import ProductDetailScreen
+import 'widgets/ai_mic_button.dart';
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
@@ -334,6 +335,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 },
               ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: const AiMicButton(), // Nút Mic to đùng ở giữa dưới
     );
   }
 }

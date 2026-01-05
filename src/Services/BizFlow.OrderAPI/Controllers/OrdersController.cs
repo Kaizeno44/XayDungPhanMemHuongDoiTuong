@@ -2,8 +2,10 @@ using BizFlow.OrderAPI.Data;
 using BizFlow.OrderAPI.DbModels;
 using BizFlow.OrderAPI.DTOs;
 using BizFlow.OrderAPI.Services;
+using MassTransit; // [1] Thêm thư viện MassTransit
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Shared.Kernel.Events; // [2] Thêm thư viện Events chung
 
 namespace BizFlow.OrderAPI.Controllers
 {
@@ -13,23 +15,28 @@ namespace BizFlow.OrderAPI.Controllers
     {
         private readonly OrderDbContext _context;
         private readonly ProductServiceClient _productService;
+        private readonly IPublishEndpoint _publishEndpoint; // [3] Khai báo biến Publish
 
         public OrdersController(
             OrderDbContext context,
-            ProductServiceClient productService)
+            ProductServiceClient productService,
+            IPublishEndpoint publishEndpoint) // [4] Inject vào Constructor
         {
             _context = context;
             _productService = productService;
+            _publishEndpoint = publishEndpoint;
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateOrder(
-            [FromBody] CreateOrderRequest request)
+        public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
         {
             if (request.Items == null || !request.Items.Any())
                 return BadRequest("Đơn hàng rỗng.");
 
-            // 1️⃣ CHECK KHO + LẤY GIÁ
+            // =================================================================
+            // 1️⃣ CHECK KHO + LẤY GIÁ (Synchronous - HTTP)
+            // =================================================================
+            // Vẫn giữ kiểm tra này để fail-fast (báo lỗi ngay) nếu không đủ hàng
             var checkStockRequest = request.Items.Select(i =>
                 new CheckStockRequest
                 {
@@ -38,17 +45,15 @@ namespace BizFlow.OrderAPI.Controllers
                     Quantity = i.Quantity
                 }).ToList();
 
-            var stockResults =
-                await _productService.CheckStockAsync(checkStockRequest);
+            var stockResults = await _productService.CheckStockAsync(checkStockRequest);
 
-            var notEnough =
-                stockResults.FirstOrDefault(x => !x.IsEnough);
-
+            var notEnough = stockResults.FirstOrDefault(x => !x.IsEnough);
             if (notEnough != null)
-                return BadRequest(
-                    $"Sản phẩm ID {notEnough.ProductId} không đủ hàng.");
+                return BadRequest($"Sản phẩm ID {notEnough.ProductId} không đủ hàng.");
 
-            // 2️⃣ TẠO ĐƠN
+            // =================================================================
+            // 2️⃣ TẠO OBJECT ĐƠN HÀNG
+            // =================================================================
             var order = new Order
             {
                 OrderCode = $"ORD-{DateTime.Now:yyyyMMddHHmmss}",
@@ -64,9 +69,7 @@ namespace BizFlow.OrderAPI.Controllers
 
             foreach (var item in request.Items)
             {
-                var stock = stockResults.First(x =>
-                    x.ProductId == item.ProductId);
-
+                var stock = stockResults.First(x => x.ProductId == item.ProductId);
                 var orderItem = new OrderItem
                 {
                     ProductId = item.ProductId,
@@ -75,14 +78,14 @@ namespace BizFlow.OrderAPI.Controllers
                     UnitPrice = stock.UnitPrice,
                     Total = stock.UnitPrice * item.Quantity
                 };
-
                 order.OrderItems.Add(orderItem);
                 totalAmount += orderItem.Total;
             }
-
             order.TotalAmount = totalAmount;
 
-            // 3️⃣ GHI NỢ & CHẶN HẠN MỨC
+            // =================================================================
+            // 3️⃣ GHI NỢ & KIỂM TRA HẠN MỨC
+            // =================================================================
             if (request.PaymentMethod == "Debt")
             {
                 // A. Tính tổng nợ hiện tại
@@ -106,28 +109,48 @@ namespace BizFlow.OrderAPI.Controllers
                 {
                     CustomerId = request.CustomerId,
                     StoreId = request.StoreId,
-                    Amount = totalAmount,      // DƯƠNG → tăng nợ
+                    Amount = totalAmount,
                     Action = "Debit",
                     Reason = $"Nợ đơn hàng {order.OrderCode}",
                     CreatedAt = DateTime.UtcNow
                 });
 
                 // E. Đồng bộ bảng Customer
-                var customer =
-                    await _context.Customers.FindAsync(request.CustomerId);
-
+                var customer = await _context.Customers.FindAsync(request.CustomerId);
                 if (customer != null)
                 {
                     customer.CurrentDebt += totalAmount;
                 }
             }
 
-            // 4️⃣ LƯU ĐƠN
+            // =================================================================
+            // 4️⃣ LƯU ĐƠN VÀO DB (Transaction chốt đơn)
+            // =================================================================
             order.Status = "Confirmed";
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
 
-            // 5️⃣ TRỪ KHO
+            // =================================================================
+            // 5️⃣ [MỚI] GỬI SỰ KIỆN SANG RABBITMQ (Async)
+            // =================================================================
+            // Đây là bước quan trọng: Thông báo cho toàn hệ thống biết có đơn mới
+            await _publishEndpoint.Publish(new OrderCreatedEvent
+            {
+                OrderId = order.Id,
+                StoreId = order.StoreId,
+                TotalAmount = order.TotalAmount,
+                CreatedAt = order.OrderDate
+            });
+
+            Console.WriteLine($"--> [OrderAPI] Đã bắn sự kiện OrderCreatedEvent: {order.OrderCode}");
+
+            // =================================================================
+            // 6️⃣ TRỪ KHO (TẠM THỜI GIỮ LẠI)
+            // =================================================================
+            // Lưu ý: Sau khi bạn viết Consumer bên ProductAPI xong, bạn có thể 
+            // XÓA đoạn code dưới đây để việc trừ kho diễn ra tự động qua RabbitMQ.
+            // Hiện tại cứ giữ lại để đảm bảo kho vẫn bị trừ nếu Consumer chưa chạy.
+            
             foreach (var item in order.OrderItems)
             {
                 await _productService.DeductStockAsync(
@@ -139,7 +162,8 @@ namespace BizFlow.OrderAPI.Controllers
             return Ok(new
             {
                 Message = "Tạo đơn thành công",
-                OrderId = order.Id
+                OrderId = order.Id,
+                OrderCode = order.OrderCode
             });
         }
     }

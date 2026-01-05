@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 
 import '../cart_provider.dart';
-import '../models.dart'; // 👈 QUAN TRỌNG: Phải có dòng này để hiểu CartItem
+import '../models.dart';
 
 class AiMicButton extends StatefulWidget {
   const AiMicButton({super.key});
@@ -18,7 +18,7 @@ class AiMicButton extends StatefulWidget {
 
 class _AiMicButtonState extends State<AiMicButton> {
   final AudioRecorder _audioRecorder = AudioRecorder();
-  
+
   bool _isRecording = false;
   bool _isProcessing = false;
   String? _path;
@@ -37,11 +37,11 @@ class _AiMicButtonState extends State<AiMicButton> {
       _path = '${dir.path}/voice_order.m4a';
 
       await _audioRecorder.start(const RecordConfig(), path: _path!);
-      
+
       setState(() => _isRecording = true);
-      print("🎙 Đang ghi âm...");
+      debugPrint("🎙 Đang ghi âm...");
     } catch (e) {
-      print("Lỗi ghi âm: $e");
+      debugPrint("Lỗi ghi âm: $e");
     }
   }
 
@@ -55,7 +55,7 @@ class _AiMicButtonState extends State<AiMicButton> {
     });
 
     if (path != null) {
-      print("⏹ File ghi âm tại: $path");
+      debugPrint("⏹ File ghi âm tại: $path");
       await _sendToAiService(path);
     }
 
@@ -66,31 +66,31 @@ class _AiMicButtonState extends State<AiMicButton> {
 
   Future<void> _sendToAiService(String filePath) async {
     try {
-      // ⚠️ LƯU Ý IP: 
+      // ⚠️ LƯU Ý IP:
       // - Máy ảo Android: 10.0.2.2
-      // - Máy thật: Dùng IP LAN
-      var uri = Uri.parse('http://10.0.2.2:5005/api/ai/analyze-voice'); 
-      
+      // - Máy thật: Dùng IP LAN của máy tính chạy Server AI
+      var uri = Uri.parse('http://10.0.2.2:5005/api/ai/analyze-voice');
+
       var request = http.MultipartRequest('POST', uri);
       request.files.add(await http.MultipartFile.fromPath('file', filePath));
 
-      print("📡 Đang gửi lên AI...");
+      debugPrint("📡 Đang gửi lên AI...");
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         final decoded = json.decode(utf8.decode(response.bodyBytes));
-        print("✅ AI Trả về: $decoded");
-        
+        debugPrint("✅ AI Trả về: $decoded");
+
         if (decoded['success'] == true) {
           _processAiResult(decoded['data']);
         }
       } else {
-        print("❌ Lỗi Server: ${response.statusCode}");
+        debugPrint("❌ Lỗi Server: ${response.statusCode}");
         _showError("Lỗi Server: ${response.statusCode}");
       }
     } catch (e) {
-      print("❌ Lỗi kết nối AI: $e");
+      debugPrint("❌ Lỗi kết nối AI: $e");
       _showError("Lỗi kết nối: $e");
     }
   }
@@ -98,27 +98,29 @@ class _AiMicButtonState extends State<AiMicButton> {
   void _processAiResult(Map<String, dynamic> data) {
     final cart = Provider.of<CartProvider>(context, listen: false);
     final items = data['items'] as List;
-    
+
     int successCount = 0;
 
     for (var item in items) {
       if (item['product_id'] != null) {
-        
         // Parse số an toàn
         final num priceNum = item['price'] ?? 0;
         final num qtyNum = item['quantity'] ?? 1;
 
-        // 👇 Đã có CartItem nhờ import models.dart
         final cartItem = CartItem(
           productId: item['product_id'],
           productName: item['official_name'] ?? item['product_name'],
-          unitId: 1, 
+          unitId: 1, // Mặc định đơn vị cơ bản
           unitName: item['unit'] ?? 'Cái',
-          price: priceNum.toDouble(), 
-          quantity: qtyNum.toInt(), 
+          price: priceNum.toDouble(),
+          quantity: qtyNum.toInt(),
+          // 👇 SỬA LỖI TẠI ĐÂY: Truyền maxStock giả định
+          maxStock:
+              9999, // Vì AI chưa trả về tồn kho, ta cho phép thêm thoải mái
         );
 
-        cart.addToCart(cartItem); 
+        // Gọi hàm thêm vào giỏ (có thể nhận về thông báo lỗi nhưng với maxStock=9999 thì sẽ qua)
+        cart.addToCart(cartItem);
         successCount++;
       }
     }
@@ -126,9 +128,11 @@ class _AiMicButtonState extends State<AiMicButton> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(successCount > 0 
-            ? "🤖 Đã thêm $successCount sản phẩm!" 
-            : "🤖 Không tìm thấy sản phẩm."),
+          content: Text(
+            successCount > 0
+                ? "🤖 Đã thêm $successCount sản phẩm!"
+                : "🤖 Không tìm thấy sản phẩm.",
+          ),
           backgroundColor: successCount > 0 ? Colors.green : Colors.orange,
           duration: const Duration(seconds: 2),
         ),
@@ -138,9 +142,9 @@ class _AiMicButtonState extends State<AiMicButton> {
 
   void _showError(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
     }
   }
 
@@ -153,20 +157,25 @@ class _AiMicButtonState extends State<AiMicButton> {
         width: 70,
         height: 70,
         decoration: BoxDecoration(
-          color: _isRecording ? Colors.red : (_isProcessing ? Colors.grey : Colors.blue[800]),
+          color: _isRecording
+              ? Colors.red
+              : (_isProcessing ? Colors.grey : Colors.blue[800]),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.3),
               blurRadius: 10,
               spreadRadius: 2,
-            )
+            ),
           ],
         ),
         child: _isProcessing
             ? const Padding(
                 padding: EdgeInsets.all(18.0),
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 3,
+                ),
               )
             : Icon(
                 _isRecording ? Icons.mic : Icons.mic_none,

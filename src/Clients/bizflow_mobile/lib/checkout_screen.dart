@@ -1,22 +1,20 @@
+// lib/checkout_screen.dart
 import 'dart:convert';
 import 'dart:async';
-import 'package:bizflow_mobile/cart_provider.dart';
-import 'package:bizflow_mobile/screens/invoice_preview_screen.dart';
+import 'package:bizflow_mobile/create_customer_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 
-// --- IMPORT DỰ ÁN ---
+import 'cart_provider.dart';
+import 'screens/invoice_preview_screen.dart';
+// 👈 IMPORT MỚI
 import '../core/config/api_config.dart';
 import '../models.dart';
 import 'order_history_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
-  const CheckoutScreen({
-    super.key,
-    required this.storeId,
-    // ĐÃ XÓA: required String customerId (Không cần thiết)
-  });
+  const CheckoutScreen({super.key, required this.storeId});
 
   final String storeId;
 
@@ -80,48 +78,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() => isLoadingOrder = true);
 
-    // Snapshot dữ liệu để in
     final itemsSnapshot = List<CartItem>.from(cart.items);
     final totalSnapshot = itemsSnapshot.fold(
       0.0,
       (sum, item) => sum + item.total,
     );
-    final customerName = customers
-        .firstWhere(
-          (c) => c.id == selectedCustomerId,
-          orElse: () => Customer(id: '', name: 'Khách lẻ'),
-        )
-        .name;
+
+    // Tìm khách hàng đã chọn để lấy tên hiển thị
+    final customerObj = customers.firstWhere(
+      (c) => c.id == selectedCustomerId,
+      orElse: () => Customer(id: '', name: 'Khách lẻ', phone: '', address: ''),
+    );
 
     final url = Uri.parse(ApiConfig.orders);
     final requestBody = {
-      "customerId": selectedCustomerId, // Đây sẽ là GUID lấy từ Dropdown
+      "customerId": selectedCustomerId,
       "storeId": widget.storeId,
       "paymentMethod": selectedPaymentMethod,
       "items": cart.items.map((e) => e.toJson()).toList(),
     };
-
-    // DEBUG LOG
-    print("🟡 Body gửi đi: ${jsonEncode(requestBody)}");
 
     try {
       final response = await http
           .post(url, headers: ApiConfig.headers, body: jsonEncode(requestBody))
           .timeout(const Duration(seconds: 30));
 
-      print("🔵 Status: ${response.statusCode}");
-      print("🔵 Body phản hồi: ${response.body}");
-
       if (response.statusCode == 200 || response.statusCode == 201) {
         cart.clearCart();
         if (mounted) {
-          _showSuccessDialog(itemsSnapshot, totalSnapshot, customerName);
+          _showSuccessDialog(itemsSnapshot, totalSnapshot, customerObj.name);
         }
       } else {
         String errorMsg = response.body;
         try {
           final errJson = jsonDecode(response.body);
-          // Xử lý thông báo lỗi từ Validation hoặc Logic
           if (errJson['errors'] != null) {
             errorMsg = errJson['errors'].toString();
           } else {
@@ -143,7 +133,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // --- DIALOG THÀNH CÔNG ---
   void _showSuccessDialog(
     List<CartItem> items,
     double total,
@@ -175,8 +164,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         actions: [
           OutlinedButton(
             onPressed: () {
-              Navigator.of(ctx).pop(); // Đóng Dialog
-              Navigator.of(ctx).pop(); // Về màn hình trước (Cart)
+              Navigator.of(ctx).pop();
+              Navigator.of(ctx).pop();
             },
             child: const Text("Đóng"),
           ),
@@ -218,40 +207,86 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Chọn khách hàng
-            isLoadingCustomers
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: CircularProgressIndicator(),
-                    ),
-                  )
-                : DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: "Chọn khách hàng",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                    ),
-                    isExpanded: true,
-                    value: selectedCustomerId,
-                    hint: const Text("-- Vui lòng chọn khách hàng --"),
-                    items: customers
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: c.id,
-                            child: Text(
-                              c.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+            // --- KHU VỰC CHỌN KHÁCH HÀNG (CÓ NÚT +) ---
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: isLoadingCustomers
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(15),
+                            child: CircularProgressIndicator(),
                           ),
                         )
-                        .toList(),
-                    onChanged: (val) =>
-                        setState(() => selectedCustomerId = val),
+                      : DropdownButtonFormField<String>(
+                          decoration: const InputDecoration(
+                            labelText: "Chọn khách hàng",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 16,
+                            ),
+                          ),
+                          isExpanded: true,
+                          value: selectedCustomerId,
+                          hint: const Text("Khách lẻ"),
+                          items: customers
+                              .map(
+                                (c) => DropdownMenuItem(
+                                  value: c.id,
+                                  child: Text(
+                                    "${c.name} - ${c.phone}",
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setState(() => selectedCustomerId = val),
+                        ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // NÚT THÊM NHANH KHÁCH HÀNG
+                Container(
+                  width: 55,
+                  height: 55, // Khớp chiều cao với Dropdown mặc định
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue.shade300),
                   ),
+                  child: IconButton(
+                    icon: const Icon(Icons.person_add, color: Colors.blue),
+                    tooltip: "Thêm khách mới",
+                    onPressed: () async {
+                      // Gọi Dialog tạo khách
+                      final newCustomer = await showDialog<Customer>(
+                        context: context,
+                        builder: (_) =>
+                            CreateCustomerDialog(storeId: widget.storeId),
+                      );
+
+                      // Nếu tạo thành công, Dialog trả về object Customer
+                      if (newCustomer != null) {
+                        setState(() {
+                          customers.add(newCustomer); // Thêm vào danh sách
+                          selectedCustomerId =
+                              newCustomer.id; // Chọn luôn người đó
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+
             const SizedBox(height: 10),
 
-            // Nút xem lịch sử
+            // Nút xem lịch sử (Chỉ hiện khi đã chọn khách)
             if (selectedCustomerId != null)
               Align(
                 alignment: Alignment.centerRight,
@@ -276,7 +311,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 20),
             const Divider(),
 
-            // Chọn thanh toán
+            // Chọn phương thức thanh toán
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -310,7 +345,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
             const Spacer(),
 
-            // Nút xác nhận
+            // Nút Xác Nhận
             SizedBox(
               width: double.infinity,
               height: 50,

@@ -68,6 +68,15 @@ sample_products = [
         "price": 1300, 
         "code": "GACH_ONG",
         "image": ""
+    },
+
+    {
+        "id": "8", 
+        "name": "Tôn lạnh mạ màu Hoa Sen", 
+        "unit": "tấm", 
+        "price": 185000, 
+        "code": "TON_LANH",
+        "image": ""
     }
 ]
 

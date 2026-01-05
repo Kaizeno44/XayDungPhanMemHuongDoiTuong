@@ -138,63 +138,7 @@ namespace Identity.API.Data
                 var result = await userManager.CreateAsync(staffUser, "Admin@123");
                 if (result.Succeeded) await userManager.AddToRoleAsync(staffUser, "Employee");
             }
-            // 7. TẠO SẢN PHẨM MẪU (CHO CỬA HÀNG BA TÈO)
-            // ------------------------------------------------------------
-            // Tìm lại ông cửa hàng Ba Tèo đã tạo ở bước 4
-            var baTeoStore = await context.Stores.FirstOrDefaultAsync(s => s.StoreName == "Vật Liệu Xây Dựng Ba Tèo");
-
-            // Nếu tìm thấy cửa hàng và kho đang trống thì mới thêm
-            if (baTeoStore != null && !await context.Products.AnyAsync())
-            {
-                var products = new List<Product>
-                {
-                    new Product
-                    {
-                        Name = "Xi măng Hà Tiên",
-                        Price = 85000,
-                        Unit = "Bao",
-                        StoreId = baTeoStore.Id
-                    },
-                    new Product
-                    {
-                        Name = "Xi măng Nghi Sơn",
-                        Price = 82000,
-                        Unit = "Bao",
-                        StoreId = baTeoStore.Id
-                    },
-                    new Product
-                    {
-                        Name = "Cát xây dựng (Vàng)",
-                        Price = 250000,
-                        Unit = "Khối",
-                        StoreId = baTeoStore.Id
-                    },
-                    new Product
-                    {
-                        Name = "Gạch ống 4 lỗ",
-                        Price = 1200,
-                        Unit = "Viên",
-                        StoreId = baTeoStore.Id
-                    },
-                    new Product
-                    {
-                        Name = "Thép cuộn Hòa Phát phi 6",
-                        Price = 16000,
-                        Unit = "Kg",
-                        StoreId = baTeoStore.Id
-                    },
-                    new Product
-                    {
-                        Name = "Sơn nước Dulux trắng",
-                        Price = 1500000,
-                        Unit = "Thùng",
-                        StoreId = baTeoStore.Id
-                    }
-                };
-
-                await context.Products.AddRangeAsync(products);
-                await context.SaveChangesAsync();
-            }
+            
         }
     }
 }

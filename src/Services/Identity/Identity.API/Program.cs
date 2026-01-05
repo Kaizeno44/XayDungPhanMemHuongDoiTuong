@@ -98,7 +98,8 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
-
+// Đăng ký HttpClient để gọi sang Service khác
+builder.Services.AddHttpClient();
 var app = builder.Build();
 
 // --- DATA SEEDING & MIGRATION ---

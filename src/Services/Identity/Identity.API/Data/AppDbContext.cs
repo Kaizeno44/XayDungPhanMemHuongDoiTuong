@@ -1,67 +1,64 @@
+using Microsoft.AspNetCore.Identity; // 👈 Cần cái này cho các class Generic
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Identity.Domain.Entities;
 
 namespace Identity.API.Data
 {
-    public class AppDbContext : DbContext
+    // 👇 SỬA QUAN TRỌNG: Khai báo đầy đủ để Identity biết "UserRole" là con đẻ
+    public class AppDbContext : IdentityDbContext<
+        User, 
+        Role, 
+        Guid, 
+        IdentityUserClaim<Guid>, 
+        UserRole,  // 👈 Đây! Phải chỉ đích danh class này
+        IdentityUserLogin<Guid>, 
+        IdentityRoleClaim<Guid>, 
+        IdentityUserToken<Guid>>
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
 
-        public DbSet<User> Users { get; set; }
-        public DbSet<Role> Roles { get; set; }
-        public DbSet<UserRole> UserRoles { get; set; }
-
         public DbSet<UserDevice> UserDevices { get; set; }
         public DbSet<Store> Stores { get; set; }
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
-
+        public DbSet<Customer> Customers { get; set; }
+        public DbSet<Product> Products { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
 
-            // 1. Cấu hình Many-to-Many cho UserRole
-            builder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
+  // --- FIX CẢNH BÁO RoleId1, UserId1 ---
+            // Chỉ định rõ mối quan hệ để EF không tạo cột trùng
+            builder.Entity<User>()
+                .HasMany(u => u.UserRoles)
+                .WithOne(ur => ur.User)
+                .HasForeignKey(ur => ur.UserId)
+                .IsRequired();
 
-            builder.Entity<UserRole>()
-                .HasOne(ur => ur.User)
-                .WithMany(u => u.UserRoles)
-                .HasForeignKey(ur => ur.UserId);
+            builder.Entity<Role>()
+                .HasMany(r => r.UserRoles)
+                .WithOne(ur => ur.Role)
+                .HasForeignKey(ur => ur.RoleId)
+                .IsRequired();
 
-            builder.Entity<UserRole>()
-                .HasOne(ur => ur.Role)
-                .WithMany(r => r.UserRoles)
-                .HasForeignKey(ur => ur.RoleId);
-
-            // 2. Cấu hình Store -> Plan
+            // --- CÁC CẤU HÌNH KHÁC CỦA BẠN (Giữ nguyên) ---
             builder.Entity<Store>()
                 .HasOne(s => s.SubscriptionPlan)
                 .WithMany()
                 .HasForeignKey(s => s.SubscriptionPlanId);
 
-            // 3. Cấu hình User -> Store
             builder.Entity<User>()
                 .HasOne(u => u.Store)
                 .WithMany(s => s.Users)
                 .HasForeignKey(u => u.StoreId)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            // --------------------------------------------------------
-            // DATA SEEDING (Dữ liệu mẫu chuẩn GUID)
-            // --------------------------------------------------------
-
-            // ID Cố định (Dùng Guid chuẩn để tránh lỗi parse)
+            // Seed Data SubscriptionPlan (Giữ nguyên như bạn làm là đúng)
             var basicPlanId = Guid.Parse("d5093c85-64e6-42c2-8098-902341270123");
             var proPlanId = Guid.Parse("60350d5e-d225-4676-9051-512686851234");
 
-            var roleSuperAdminId = Guid.Parse("18c90961-62d2-45e3-9e45-123456789001");
-            var roleOwnerId = Guid.Parse("29d01072-73e3-46f4-af56-123456789002");
-            var roleEmployeeId = Guid.Parse("30e12183-84f5-4705-bf67-123456789003");
-
-            var superAdminUserId = Guid.Parse("9f6a2336-311e-4209-906d-495941c21054");
-
-            // A. Seed SubscriptionPlan
             builder.Entity<SubscriptionPlan>().HasData(
                 new SubscriptionPlan
                 {
@@ -82,32 +79,6 @@ namespace Identity.API.Data
                     AllowAI = true
                 }
             );
-
-            // B. Seed Roles
-            builder.Entity<Role>().HasData(
-                new Role { Id = roleSuperAdminId, Name = "SuperAdmin", Description = "Quản trị viên hệ thống" },
-                new Role { Id = roleOwnerId, Name = "Owner", Description = "Chủ hộ kinh doanh" },
-                new Role { Id = roleEmployeeId, Name = "Employee", Description = "Nhân viên bán hàng" }
-            );
-
-            // C. Seed User SuperAdmin
-            builder.Entity<User>().HasData(new User
-            {
-                Id = superAdminUserId,
-                FullName = "Quản Trị Viên Hệ Thống",
-                Email = "superadmin@bizflow.com",
-                PasswordHash = "admin", // Lưu ý: Hash password nếu cần
-                IsActive = true,
-                IsOwner = false,
-                StoreId = null
-            });
-
-            // D. Seed UserRole
-            builder.Entity<UserRole>().HasData(new UserRole
-            {
-                UserId = superAdminUserId,
-                RoleId = roleSuperAdminId
-            });
         }
     }
 }

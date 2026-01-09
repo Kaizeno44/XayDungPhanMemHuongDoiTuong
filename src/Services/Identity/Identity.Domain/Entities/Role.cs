@@ -1,14 +1,13 @@
-using System;
-using System.Collections.Generic;
+using Microsoft.AspNetCore.Identity;
 
 namespace Identity.Domain.Entities
 {
-    public class Role
+    // 👇 Kế thừa IdentityRole<Guid>
+    public class Role : IdentityRole<Guid>
     {
-        public Guid Id { get; set; } = Guid.NewGuid();
-        public string Name { get; set; } // Ví dụ: "Owner", "Employee", "Administrator"
-        public string Description { get; set; }
+        // ❌ ĐÃ XÓA: Id, Name (Cha đã có)
 
+        public string? Description { get; set; }
         public ICollection<UserRole> UserRoles { get; set; }
     }
 }

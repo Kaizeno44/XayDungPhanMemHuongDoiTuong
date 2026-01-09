@@ -1,65 +1,84 @@
-// File: lib/order_service.dart
-
+// lib/order_service.dart
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'core/config/api_config.dart'; // Import file config vừa tạo
+import 'models.dart';
+import 'core/config/api_config.dart';
 
 class OrderService {
-  // Hàm thanh toán công nợ
+  // 1. Hàm trả nợ (Giữ nguyên từ code cũ của bạn nếu có)
   Future<Map<String, dynamic>> payDebt({
     required String customerId,
     required double amount,
-    String? storeId,
+    required String storeId,
   }) async {
-    // SỬ DỤNG APICONFIG
     final url = Uri.parse(ApiConfig.payDebt);
-
-    final bodyRequest = {
+    final body = {
       "customerId": customerId,
       "amount": amount,
       "storeId": storeId,
-      "orderId": null,
     };
 
-    debugPrint("🔵 [OrderService] Gọi API: $url");
-    debugPrint("📦 Body: ${jsonEncode(bodyRequest)}");
+    final response = await http.post(
+      url,
+      headers: ApiConfig.headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Lỗi thanh toán nợ');
+    }
+  }
+
+  // 2. 👇 HÀM MỚI: Tạo khách hàng
+  Future<Customer> createCustomer({
+    required String name,
+    required String phone,
+    required String address,
+    required String storeId,
+  }) async {
+    final url = Uri.parse(ApiConfig.customers); // URL API tạo khách hàng
+
+    final body = {
+      "fullName": name,
+      "phoneNumber": phone,
+      "address": address,
+      "storeId": storeId, // Gán khách vào cửa hàng hiện tại
+      "currentDebt": 0,
+    };
 
     try {
-      final response = await http
-          .post(
-            url,
-            headers: ApiConfig.headers, // Dùng header chuẩn
-            body: jsonEncode(bodyRequest),
-          )
-          .timeout(const Duration(seconds: 30));
+      final response = await http.post(
+        url,
+        headers: ApiConfig.headers,
+        body: jsonEncode(body),
+      );
 
-      debugPrint("🟢 Status: ${response.statusCode}");
-      debugPrint("📄 Response: ${response.body}");
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final resData = jsonDecode(response.body);
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (response.body.isEmpty) return {};
-        return jsonDecode(response.body);
+        // Backend trả về JSON có dạng: { "message": "...", "customerId": "..." }
+        // Ta tạo ngay đối tượng Customer để trả về UI
+        return Customer(
+          id: resData['customerId'] ?? '',
+          name: name,
+          phone: phone,
+          address: address,
+          currentDebt: 0,
+        );
       } else {
-        // Xử lý lỗi
-        String errorMessage;
+        // Xử lý lỗi từ Server (ví dụ: SĐT trùng)
+        String errorMsg = response.body;
         try {
-          final errorJson = jsonDecode(response.body);
-          errorMessage =
-              errorJson['message'] ??
-              errorJson['title'] ??
-              errorJson['error'] ??
-              "Lỗi Server: ${response.statusCode}";
-        } catch (e) {
-          errorMessage = response.body.isNotEmpty
-              ? response.body
-              : "Lỗi kết nối: ${response.statusCode}";
-        }
-        throw Exception(errorMessage);
+          final errJson = jsonDecode(response.body);
+          errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
+        } catch (_) {}
+        throw Exception(errorMsg);
       }
     } catch (e) {
-      debugPrint("🔴 Lỗi: $e");
-      throw Exception(e.toString().replaceAll("Exception: ", ""));
+      throw Exception("Lỗi kết nối: $e");
     }
   }
 }

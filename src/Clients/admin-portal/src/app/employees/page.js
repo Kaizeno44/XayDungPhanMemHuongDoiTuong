@@ -1,9 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import api from "@/utils/api";
 
 export default function EmployeesPage() {
+  const router = useRouter();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,9 +29,22 @@ export default function EmployeesPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Danh sách Nhân viên</h1>
-          <p className="text-gray-500 text-sm">Dữ liệu thực từ PostgreSQL</p>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => router.push("/merchant/dashboard")}
+            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-200 rounded-lg transition-colors text-gray-600 font-medium"
+            title="Quay lại Dashboard"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span>Quay lại</span>
+          </button>
+          <div className="h-8 w-px bg-gray-300 mx-2"></div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Danh sách Nhân viên</h1>
+            <p className="text-gray-500 text-sm">Dữ liệu thực từ PostgreSQL</p>
+          </div>
         </div>
         <Link href="/employees/create">
           <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow flex items-center gap-2">

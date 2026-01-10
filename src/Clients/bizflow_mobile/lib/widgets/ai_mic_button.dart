@@ -96,48 +96,53 @@ class _AiMicButtonState extends State<AiMicButton> {
   }
 
   void _processAiResult(Map<String, dynamic> data) {
+    if (!mounted) return;
     final cart = Provider.of<CartProvider>(context, listen: false);
-    final items = data['items'] as List;
+    
+    // 1. Đổ dữ liệu Khách & Thanh toán vào CartProvider
+    cart.setOrderInfoFromAI(
+      name: data['customer_name'],
+      phone: data['customer_phone'],
+      method: data['payment_method']
+    );
 
+    // 2. Xử lý từng sản phẩm
+    final items = data['items'] as List;
     int successCount = 0;
 
     for (var item in items) {
       if (item['product_id'] != null) {
-        // Parse số an toàn
+        // Parse số liệu an toàn
         final num priceNum = item['price'] ?? 0;
         final num qtyNum = item['quantity'] ?? 1;
 
         final cartItem = CartItem(
           productId: item['product_id'],
           productName: item['official_name'] ?? item['product_name'],
-          unitId: 1, // Mặc định đơn vị cơ bản
+          unitId: 1, // Tạm thời mặc định, logic sau này sẽ lấy từ RAG
           unitName: item['unit'] ?? 'Cái',
           price: priceNum.toDouble(),
-          quantity: qtyNum.toInt(),
-          // 👇 SỬA LỖI TẠI ĐÂY: Truyền maxStock giả định
-          maxStock:
-              9999, // Vì AI chưa trả về tồn kho, ta cho phép thêm thoải mái
+          
+          // 👇 [QUAN TRỌNG] Ép về int vì Model Person C dùng int
+          quantity: qtyNum.toInt(), 
+          
+          // 👇 [QUAN TRỌNG] Truyền maxStock giả định (Server sẽ check lại sau)
+          maxStock: 9999.0, 
         );
 
-        // Gọi hàm thêm vào giỏ (có thể nhận về thông báo lỗi nhưng với maxStock=9999 thì sẽ qua)
-        cart.addToCart(cartItem);
+        cart.addToCart(cartItem); 
         successCount++;
       }
     }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            successCount > 0
-                ? "🤖 Đã thêm $successCount sản phẩm!"
-                : "🤖 Không tìm thấy sản phẩm.",
-          ),
-          backgroundColor: successCount > 0 ? Colors.green : Colors.orange,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    // Thông báo
+    String msg = "🤖 ";
+    if (data['customer_name'] != null) msg += "Khách: ${data['customer_name']}. ";
+    msg += "Đã thêm $successCount món.";
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.green)
+    );
   }
 
   void _showError(String msg) {

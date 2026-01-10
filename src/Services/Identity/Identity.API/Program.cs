@@ -1,5 +1,7 @@
 using Identity.API.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Kernel.Extensions;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +34,9 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 // 4. Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// 5. RabbitMQ
+builder.Services.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
 
 var app = builder.Build();
 

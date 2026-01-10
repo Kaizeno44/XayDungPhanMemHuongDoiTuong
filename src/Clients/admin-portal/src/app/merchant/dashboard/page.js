@@ -7,6 +7,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import axios from "axios";
+import * as signalR from "@microsoft/signalr";
+import { notification } from "antd";
 
 export default function MerchantDashboard() {
   const router = useRouter();
@@ -34,6 +36,36 @@ export default function MerchantDashboard() {
     };
 
     fetchRevenue();
+
+    // --- CẤU HÌNH SIGNALR ---
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl("http://localhost:5000/hubs/notifications", {
+        accessTokenFactory: () => token
+      })
+      .withAutomaticReconnect()
+      .build();
+
+    connection.start()
+      .then(() => {
+        console.log("Connected to SignalR Hub");
+        connection.invoke("JoinAdminGroup");
+      })
+      .catch(err => console.error("SignalR Connection Error: ", err));
+
+    connection.on("ReceiveNotification", (data) => {
+      notification.success({
+        message: data.title,
+        description: data.message,
+        placement: "topRight",
+        duration: 5
+      });
+      // Refresh data khi có đơn mới
+      fetchRevenue();
+    });
+
+    return () => {
+      connection.stop();
+    };
   }, [router]);
 
   const stats = [
@@ -107,27 +139,43 @@ export default function MerchantDashboard() {
           title="Đơn hàng"
           desc="Lịch sử bán hàng"
         />
+        <QuickActionCard 
+          href="http://localhost:15672"
+          color="purple"
+          icon="🐰"
+          title="RabbitMQ"
+          desc="Quản lý hàng đợi tin nhắn"
+          external
+        />
       </div>
     </div>
   );
 }
 
-function QuickActionCard({ href, color, icon, title, desc }) {
+function QuickActionCard({ href, color, icon, title, desc, external }) {
   const colorClasses = {
     blue: "border-blue-500 hover:shadow-blue-100",
     green: "border-green-500 hover:shadow-green-100",
     purple: "border-purple-500 hover:shadow-purple-100",
   };
 
+  const content = (
+    <div className={`bg-white p-5 rounded-xl border border-gray-100 border-l-4 shadow-sm hover:shadow-lg transition-all cursor-pointer group ${colorClasses[color]}`}>
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-2xl group-hover:scale-110 transition-transform">{icon}</span>
+        <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+      </div>
+      <p className="text-gray-500 text-sm pl-9">{desc}</p>
+    </div>
+  );
+
+  if (external) {
+    return <a href={href} target="_blank" rel="noopener noreferrer">{content}</a>;
+  }
+
   return (
     <Link href={href}>
-      <div className={`bg-white p-5 rounded-xl border border-gray-100 border-l-4 shadow-sm hover:shadow-lg transition-all cursor-pointer group ${colorClasses[color]}`}>
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-2xl group-hover:scale-110 transition-transform">{icon}</span>
-          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
-        </div>
-        <p className="text-gray-500 text-sm pl-9">{desc}</p>
-      </div>
+      {content}
     </Link>
   );
 }

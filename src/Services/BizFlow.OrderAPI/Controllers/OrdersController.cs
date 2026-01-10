@@ -2,8 +2,12 @@ using BizFlow.OrderAPI.Data;
 using BizFlow.OrderAPI.DbModels;
 using BizFlow.OrderAPI.DTOs;
 using BizFlow.OrderAPI.Services;
+using BizFlow.OrderAPI.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
+using MassTransit;
+using Shared.Kernel.Events;
 
 namespace BizFlow.OrderAPI.Controllers
 {
@@ -13,13 +17,38 @@ namespace BizFlow.OrderAPI.Controllers
     {
         private readonly OrderDbContext _context;
         private readonly ProductServiceClient _productService;
+        private readonly IHubContext<NotificationHub> _hubContext;
+        private readonly IPublishEndpoint _publishEndpoint;
 
         public OrdersController(
             OrderDbContext context,
-            ProductServiceClient productService)
+            ProductServiceClient productService,
+            IHubContext<NotificationHub> hubContext,
+            IPublishEndpoint publishEndpoint)
         {
             _context = context;
             _productService = productService;
+            _hubContext = hubContext;
+            _publishEndpoint = publishEndpoint;
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetOrders()
+        {
+            var orders = await _context.Orders
+                .OrderByDescending(o => o.OrderDate)
+                .Select(o => new {
+                    o.Id,
+                    o.OrderCode,
+                    o.OrderDate,
+                    o.TotalAmount,
+                    o.Status,
+                    o.PaymentMethod,
+                    o.CustomerId
+                })
+                .ToListAsync();
+
+            return Ok(orders);
         }
 
         [HttpPost]
@@ -135,6 +164,23 @@ namespace BizFlow.OrderAPI.Controllers
                     item.UnitId,
                     item.Quantity);
             }
+
+            // 6️⃣ BẮN EVENT SANG RABBITMQ
+            await _publishEndpoint.Publish(new OrderCreatedEvent
+            {
+                OrderId = order.Id,
+                StoreId = order.StoreId,
+                TotalAmount = order.TotalAmount,
+                CreatedAt = order.OrderDate
+            });
+
+            // 7️⃣ BẮN SIGNALR SANG WEB ADMIN
+            await _hubContext.Clients.Group("Admins").SendAsync("ReceiveNotification", new
+            {
+                title = "Đơn hàng mới! 🛒",
+                message = $"Vừa có đơn hàng {order.OrderCode} trị giá {order.TotalAmount:N0}đ",
+                orderId = order.Id
+            });
 
             return Ok(new
             {

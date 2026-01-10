@@ -2,6 +2,8 @@ using BizFlow.OrderAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using BizFlow.OrderAPI.Services;
 using QuestPDF.Infrastructure;
+using Shared.Kernel.Extensions;
+using System.Reflection;
 
 QuestPDF.Settings.License = LicenseType.Community;
 
@@ -22,6 +24,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSignalR();
+
+// Thêm RabbitMQ
+builder.Services.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
 
 builder.Services.AddCors(options =>
 {

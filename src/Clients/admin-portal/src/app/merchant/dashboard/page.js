@@ -139,14 +139,6 @@ export default function MerchantDashboard() {
           title="Đơn hàng"
           desc="Lịch sử bán hàng"
         />
-        <QuickActionCard 
-          href="http://localhost:15672"
-          color="purple"
-          icon="🐰"
-          title="RabbitMQ"
-          desc="Quản lý hàng đợi tin nhắn"
-          external
-        />
       </div>
     </div>
   );

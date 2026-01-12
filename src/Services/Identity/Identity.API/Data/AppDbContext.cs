@@ -1,22 +1,23 @@
-using Microsoft.AspNetCore.Identity; // 👈 Cần cái này cho các class Generic
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Identity.Domain.Entities;
 
 namespace Identity.API.Data
 {
-    // 👇 SỬA QUAN TRỌNG: Khai báo đầy đủ để Identity biết "UserRole" là con đẻ
+    // Khai báo đầy đủ để Identity nhận đúng UserRole
     public class AppDbContext : IdentityDbContext<
-        User, 
-        Role, 
-        Guid, 
-        IdentityUserClaim<Guid>, 
-        UserRole,  // 👈 Đây! Phải chỉ đích danh class này
-        IdentityUserLogin<Guid>, 
-        IdentityRoleClaim<Guid>, 
+        User,
+        Role,
+        Guid,
+        IdentityUserClaim<Guid>,
+        UserRole,
+        IdentityUserLogin<Guid>,
+        IdentityRoleClaim<Guid>,
         IdentityUserToken<Guid>>
     {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+        public AppDbContext(DbContextOptions<AppDbContext> options)
+            : base(options)
         {
         }
 
@@ -24,12 +25,12 @@ namespace Identity.API.Data
         public DbSet<Store> Stores { get; set; }
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
         public DbSet<Customer> Customers { get; set; }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
 
-  // --- FIX CẢNH BÁO RoleId1, UserId1 ---
-            // Chỉ định rõ mối quan hệ để EF không tạo cột trùng
+            // --- FIX RoleId1, UserId1 ---
             builder.Entity<User>()
                 .HasMany(u => u.UserRoles)
                 .WithOne(ur => ur.User)
@@ -42,7 +43,7 @@ namespace Identity.API.Data
                 .HasForeignKey(ur => ur.RoleId)
                 .IsRequired();
 
-            // --- CÁC CẤU HÌNH KHÁC CỦA BẠN (Giữ nguyên) ---
+            // --- CẤU HÌNH DOMAIN ---
             builder.Entity<Store>()
                 .HasOne(s => s.SubscriptionPlan)
                 .WithMany()
@@ -54,9 +55,9 @@ namespace Identity.API.Data
                 .HasForeignKey(u => u.StoreId)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            // Seed Data SubscriptionPlan (Giữ nguyên như bạn làm là đúng)
+            // --- SEED DATA SubscriptionPlan ---
             var basicPlanId = Guid.Parse("d5093c85-64e6-42c2-8098-902341270123");
-            var proPlanId = Guid.Parse("60350d5e-d225-4676-9051-512686851234");
+            var proPlanId   = Guid.Parse("60350d5e-d225-4676-9051-512686851234");
 
             builder.Entity<SubscriptionPlan>().HasData(
                 new SubscriptionPlan

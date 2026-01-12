@@ -5,6 +5,8 @@ import 'package:signalr_core/signalr_core.dart'; // Import SignalR
 
 import 'cart_provider.dart';
 import 'product_list_screen.dart';
+import 'screens/login_screen.dart';
+import 'providers/auth_provider.dart';
 import 'core/config/api_config.dart'; // Import ApiConfig
 
 Future<void> main() async {
@@ -15,6 +17,7 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
       ],
       child: const MyApp(),
@@ -26,10 +29,14 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
-      home: const ProductListScreen(),
+      home: authProvider.isAuthenticated
+          ? const ProductListScreen()
+          : const LoginScreen(),
     );
   }
 }

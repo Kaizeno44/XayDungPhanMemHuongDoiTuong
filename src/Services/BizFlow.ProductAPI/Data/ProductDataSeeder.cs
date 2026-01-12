@@ -8,6 +8,8 @@ namespace BizFlow.ProductAPI.Data
         public static async Task SeedAsync(ProductDbContext context)
         {
             // 1. Đảm bảo Database đã được tạo
+            // Lưu ý: EnsureCreatedAsync() không chạy Migrations. 
+            // Nếu dùng Migrations thì nên dùng context.Database.MigrateAsync()
             await context.Database.EnsureCreatedAsync();
 
             // 2. Seed Categories (Danh mục)

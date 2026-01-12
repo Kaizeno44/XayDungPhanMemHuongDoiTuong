@@ -10,7 +10,8 @@ namespace BizFlow.ProductAPI.Data
         public DbSet<Product> Products { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<ProductUnit> ProductUnits { get; set; }
-        public DbSet<Inventory> Inventories { get; set; } // <--- THÊM DÒNG NÀY
+        public DbSet<Inventory> Inventories { get; set; }
+        public DbSet<StockImport> StockImports { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -21,8 +21,14 @@ def extract_order_info(text: str):
         )
     
         prompt = f"""
-        Bạn là trợ lý bán hàng VLXD. Hãy trích xuất thông tin từ câu nói sau thành JSON:
-        "{text}"
+        Bạn là trợ lý bán hàng chuyên về Vật liệu xây dựng (VLXD). 
+        Nhiệm vụ: Trích xuất thông tin đơn hàng từ câu nói: "{text}"
+
+        Lưu ý QUAN TRỌNG:
+        1. Chỉ trích xuất các sản phẩm thuộc nhóm: Xi măng, Cát, Đá, Gạch, Sắt, Thép, Tôn, Sơn, Ống nước.
+        2. Nếu khách hàng mua đồ ăn (bánh mì, cơm...), quần áo, hoặc thứ không liên quan đến xây dựng:
+           -> Hãy BỎ QUA sản phẩm đó (không đưa vào danh sách items).
+           -> Nếu cả câu nói không có sản phẩm VLXD nào, hãy trả về danh sách "items" rỗng.
 
         Yêu cầu Output JSON schema:
         {{
@@ -40,7 +46,6 @@ def extract_order_info(text: str):
         }}
         """
         
-        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         return json.loads(response.text.replace("```json", "").replace("```", "").strip())
 

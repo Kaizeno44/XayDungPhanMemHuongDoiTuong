@@ -9,6 +9,9 @@ import 'package:http/http.dart' as http; // Thêm import http
 import 'cart_provider.dart';
 import 'models.dart';
 import 'cart_screen.dart';
+import 'providers/auth_provider.dart';
+import 'screens/login_screen.dart';
+import 'screens/stock_import_history_screen.dart';
 import 'product_service.dart';
 import 'core/config/api_config.dart';
 import 'product_detail_screen.dart';
@@ -132,7 +135,34 @@ class _ProductListScreenState extends State<ProductListScreen> {
         centerTitle: true,
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () async {
+            await Provider.of<AuthProvider>(context, listen: false).logout();
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            }
+          },
+        ),
         actions: [
+          // Nút Lịch sử nhập kho (Chỉ hiện cho Owner)
+          Consumer<AuthProvider>(
+            builder: (context, auth, child) {
+              if (auth.currentUser?.role != 'Owner') return const SizedBox();
+              return IconButton(
+                icon: const Icon(Icons.history),
+                tooltip: 'Lịch sử nhập kho',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const StockImportHistoryScreen()),
+                  );
+                },
+              );
+            },
+          ),
           Stack(
             children: [
               IconButton(

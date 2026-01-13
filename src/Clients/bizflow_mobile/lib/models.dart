@@ -197,3 +197,44 @@ class SimpleCheckStockResult {
     );
   }
 }
+
+// ================= AUTH MODELS =================
+class User {
+  final String id;
+  final String email;
+  final String fullName;
+  final String role;
+  final String storeId;
+
+  User({
+    required this.id,
+    required this.email,
+    required this.fullName,
+    required this.role,
+    required this.storeId,
+  });
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: (json['id'] ?? json['Id'] ?? '').toString(),
+      email: (json['email'] ?? json['Email'] ?? '').toString(),
+      fullName: (json['fullName'] ?? json['FullName'] ?? '').toString(),
+      role: (json['role'] ?? json['Role'] ?? '').toString(),
+      storeId: (json['storeId'] ?? json['StoreId'] ?? '').toString(),
+    );
+  }
+}
+
+class AuthResponse {
+  final String token;
+  final User user;
+
+  AuthResponse({required this.token, required this.user});
+
+  factory AuthResponse.fromJson(Map<String, dynamic> json) {
+    return AuthResponse(
+      token: json['token'] ?? json['Token'] ?? '',
+      user: User.fromJson(json['user'] ?? json['User'] ?? {}),
+    );
+  }
+}

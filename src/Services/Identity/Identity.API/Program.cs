@@ -24,7 +24,13 @@ builder.Services.AddStackExchangeRedisCache(options =>
 });
 
 // 3. Cấu hình IDENTITY (User/Role)
-builder.Services.AddIdentity<User, Role>()
+builder.Services.AddIdentity<User, Role>(options => {
+    options.Password.RequireDigit = false;
+    options.Password.RequiredLength = 4;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireLowercase = false;
+})
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
@@ -103,19 +109,30 @@ builder.Services.AddHttpClient();
 var app = builder.Build();
 
 // --- DATA SEEDING & MIGRATION ---
+Console.WriteLine("--> System: Preparing to migrate and seed database...");
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    var context = services.GetRequiredService<AppDbContext>();
-    
-    // 1. Tự động update database
-    await context.Database.MigrateAsync(); 
+    try {
+        var context = services.GetRequiredService<AppDbContext>();
+        
+        Console.WriteLine("--> System: Running Migrations...");
+        await context.Database.MigrateAsync(); 
+        Console.WriteLine("--> System: Migrations completed.");
 
-    // 2. Tạo dữ liệu mẫu (Admin/Owner/Employee)
-    var userManager = services.GetRequiredService<UserManager<User>>();
-    var roleManager = services.GetRequiredService<RoleManager<Role>>();
-
-    await IdentityDataSeeder.SeedAsync(context, userManager, roleManager);
+        var userManager = services.GetRequiredService<UserManager<User>>();
+        var roleManager = services.GetRequiredService<RoleManager<Role>>();
+        
+        Console.WriteLine("--> System: Starting Seeder...");
+        await IdentityDataSeeder.SeedAsync(context, userManager, roleManager);
+        Console.WriteLine("--> System: Seeding process finished.");
+    } catch (Exception ex) {
+        Console.WriteLine("****************************************************");
+        Console.WriteLine($"--> LỖI NGHIÊM TRỌNG: {ex.Message}");
+        if (ex.InnerException != null) 
+            Console.WriteLine($"--> Chi tiết: {ex.InnerException.Message}");
+        Console.WriteLine("****************************************************");
+    }
 }
 
 // --- PIPELINE ---

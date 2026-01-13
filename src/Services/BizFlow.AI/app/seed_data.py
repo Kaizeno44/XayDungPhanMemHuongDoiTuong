@@ -8,7 +8,7 @@ import time
 sample_products = [
     # Nhóm Xi măng
     {
-        "id": "1",  # ID trong MySQL thường bắt đầu từ 1
+        "id": "10",  # ID trong MySQL thường bắt đầu từ 1
         "name": "Xi măng Hà Tiên Đa Dụng", 
         "unit": "bao", 
         "price": 88000, 
@@ -16,7 +16,7 @@ sample_products = [
         "image": "https://vatlieuxaydung.com/images/ximang-hatien.jpg" 
     },
     {
-        "id": "2", 
+        "id": "11", 
         "name": "Xi măng Nghi Sơn PCB40", 
         "unit": "bao", 
         "price": 82000, 
@@ -76,6 +76,15 @@ sample_products = [
         "unit": "tấm", 
         "price": 185000, 
         "code": "TON_LANH",
+        "image": ""
+    },
+
+    {
+        "id": "14", 
+        "name": "Tôn lạnh mạ màu Hoa Hòe", 
+        "unit": "tấm", 
+        "price": 190000, 
+        "code": "TON_LANH2",
         "image": ""
     }
 ]

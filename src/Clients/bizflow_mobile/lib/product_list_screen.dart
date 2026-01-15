@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:signalr_core/signalr_core.dart';
-import 'package:http/http.dart' as http; // Thêm import http
+import 'package:http/http.dart' as http;
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'cart_provider.dart';
 import 'models.dart';
@@ -250,17 +251,32 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         horizontal: 16,
                         vertical: 8,
                       ),
-                      leading: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: 50,
+                          height: 50,
                           color: (uiProps['color'] as Color).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          uiProps['icon'],
-                          color: uiProps['color'],
-                          size: 30,
+                          child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: product.imageUrl!,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Icon(
+                                    uiProps['icon'],
+                                    color: uiProps['color'],
+                                    size: 30,
+                                  ),
+                                  errorWidget: (context, url, error) => Icon(
+                                    uiProps['icon'],
+                                    color: uiProps['color'],
+                                    size: 30,
+                                  ),
+                                )
+                              : Icon(
+                                  uiProps['icon'],
+                                  color: uiProps['color'],
+                                  size: 30,
+                                ),
                         ),
                       ),
                       title: Text(
@@ -323,8 +339,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                             unitName: product.unitName,
                             price: product.price,
                             quantity: 1,
-                            maxStock: product
-                                .inventoryQuantity, // 👈 Truyền maxStock vào đây
+                            maxStock: product.inventoryQuantity,
                           );
 
                           // Gọi Provider và nhận về kết quả

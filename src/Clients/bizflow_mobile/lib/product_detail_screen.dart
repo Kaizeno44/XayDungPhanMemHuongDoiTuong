@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'cart_provider.dart';
 import 'models.dart';
 import 'core/api_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'screens/stock_import_screen.dart';
 import 'providers/auth_provider.dart';
 import 'product_service.dart';
@@ -161,26 +162,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           children: [
             // Ảnh sản phẩm
             Center(
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 200,
+                  height: 200,
                   color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(12),
-                  image:
-                      widget.product.imageUrl != null &&
+                  child: widget.product.imageUrl != null &&
                           widget.product.imageUrl!.isNotEmpty
-                      ? DecorationImage(
-                          image: NetworkImage(widget.product.imageUrl!),
+                      ? CachedNetworkImage(
+                          imageUrl: widget.product.imageUrl!,
                           fit: BoxFit.cover,
+                          placeholder: (context, url) => const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                          errorWidget: (context, url, error) => Icon(
+                            Icons.image,
+                            size: 100,
+                            color: Colors.grey[400],
+                          ),
                         )
-                      : null,
+                      : Icon(Icons.image, size: 100, color: Colors.grey[400]),
                 ),
-                child:
-                    widget.product.imageUrl == null ||
-                        widget.product.imageUrl!.isEmpty
-                    ? Icon(Icons.image, size: 100, color: Colors.grey[400])
-                    : null,
               ),
             ),
             const SizedBox(height: 24),

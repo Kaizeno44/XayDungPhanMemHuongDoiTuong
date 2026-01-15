@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 import 'ai_draft_dialog.dart'; // <--- Import Dialog mới
 
@@ -153,7 +154,7 @@ class _AiMicButtonState extends State<AiMicButton> {
         decoration: BoxDecoration(
           color: _isRecording
               ? Colors.red
-              : (_isProcessing ? Colors.grey : Colors.blue[800]),
+              : (_isProcessing ? Colors.blue[900] : Colors.blue[800]),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
@@ -164,12 +165,9 @@ class _AiMicButtonState extends State<AiMicButton> {
           ],
         ),
         child: _isProcessing
-            ? const Padding(
-                padding: EdgeInsets.all(18.0),
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 3,
-                ),
+            ? const SpinKitWave(
+                color: Colors.white,
+                size: 30.0,
               )
             : Icon(
                 _isRecording ? Icons.mic : Icons.mic_none,

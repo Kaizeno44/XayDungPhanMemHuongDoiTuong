@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../models.dart';
 import '../services/auth_service.dart';
+import '../services/fcm_service.dart'; // [MỚI] Import service này
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -48,6 +49,13 @@ class AuthProvider with ChangeNotifier {
         'role': _currentUser!.role,
         'storeId': _currentUser!.storeId,
       });
+
+      // 👇 [QUAN TRỌNG] Gửi Token sau khi Login thành công 👇
+      if (_currentUser != null) {
+        // Gọi hàm đồng bộ token, truyền ID của user vào
+        FCMService().syncTokenWithServer(_currentUser!.id.toString());
+      }
+      // -----------------------------------------------------
 
       _isLoading = false;
       notifyListeners();

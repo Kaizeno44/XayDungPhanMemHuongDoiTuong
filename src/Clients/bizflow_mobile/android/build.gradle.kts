@@ -1,3 +1,10 @@
+plugins {
+    // Đây là plugin cần thiết cho Firebase
+    id("com.google.gms.google-services") version "4.4.4" apply false
+    
+    // Nếu project của bạn cần khai báo rõ version Android/Kotlin tại đây thì giữ nguyên,
+    // còn không thì chỉ cần dòng google-services ở trên là đủ để fix lỗi Firebase.
+}
 allprojects {
     repositories {
         google()

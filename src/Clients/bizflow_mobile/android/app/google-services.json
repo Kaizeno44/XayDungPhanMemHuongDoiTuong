@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "511464416588",
+    "project_id": "bizflow-mobile-bcd52",
+    "storage_bucket": "bizflow-mobile-bcd52.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:511464416588:android:bd2940aaf5700901f65be9",
+        "android_client_info": {
+          "package_name": "com.example.bizflow_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpYGCPpxHX1zRvT-y9SpmiIKeX67jrJ0E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -13,17 +13,12 @@ class CartProvider extends ChangeNotifier {
   Customer? get draftCustomer => _draftCustomer;
   String get paymentMethod => _paymentMethod;
 
-  double get totalAmount =>
-      _items.fold(0.0, (sum, item) => sum + item.total);
+  double get totalAmount => _items.fold(0.0, (sum, item) => sum + item.total);
 
   // --- NHẬN THÔNG TIN TỪ AI BUTTON ---
   void setOrderInfoFromAI({String? name, String? phone, String? method}) {
     if (name != null) {
-      _draftCustomer = Customer(
-        id: "ai_temp",
-        name: name,
-        phone: phone ?? "",
-      );
+      _draftCustomer = Customer(id: "ai_temp", name: name, phone: phone ?? "");
     }
 
     if (method != null) {
@@ -42,9 +37,10 @@ class CartProvider extends ChangeNotifier {
   /// 1. THÊM SẢN PHẨM
   /// return null = thành công | return String = lỗi tồn kho
   String? addToCart(CartItem newItem) {
-    final index = _items.indexWhere((item) =>
-        item.productId == newItem.productId &&
-        item.unitId == newItem.unitId);
+    final index = _items.indexWhere(
+      (item) =>
+          item.productId == newItem.productId && item.unitId == newItem.unitId,
+    );
 
     if (index >= 0) {
       final item = _items[index];
@@ -52,7 +48,7 @@ class CartProvider extends ChangeNotifier {
       final stock = item.maxStock;
 
       // ✅ CHECK TỒN KHO
-      if (stock != null && newQty > stock) {
+      if (newQty > stock) {
         return "Không thể thêm! Kho chỉ còn ${stock.toInt()} ${item.unitName}";
       }
 
@@ -61,7 +57,7 @@ class CartProvider extends ChangeNotifier {
       final stock = newItem.maxStock;
 
       // ✅ CHECK TỒN KHO
-      if (stock != null && newItem.quantity > stock) {
+      if (newItem.quantity > stock) {
         return "Không thể thêm! Kho chỉ còn ${stock.toInt()} ${newItem.unitName}";
       }
 
@@ -74,8 +70,9 @@ class CartProvider extends ChangeNotifier {
 
   /// 2. CẬP NHẬT SỐ LƯỢNG (+ / - / nhập tay)
   String? updateQuantity(int productId, int unitId, int newQuantity) {
-    final index = _items.indexWhere((item) =>
-        item.productId == productId && item.unitId == unitId);
+    final index = _items.indexWhere(
+      (item) => item.productId == productId && item.unitId == unitId,
+    );
 
     if (index >= 0) {
       final item = _items[index];
@@ -85,7 +82,7 @@ class CartProvider extends ChangeNotifier {
         _items.removeAt(index);
       } else {
         // ✅ CHECK TỒN KHO
-        if (stock != null && newQuantity > stock) {
+        if (newQuantity > stock) {
           return "Quá số lượng tồn kho! (Max: ${stock.toInt()})";
         }
         item.quantity = newQuantity;
@@ -100,8 +97,9 @@ class CartProvider extends ChangeNotifier {
 
   /// 3. XÓA 1 SẢN PHẨM
   void removeItem(int productId, int unitId) {
-    _items.removeWhere((item) =>
-        item.productId == productId && item.unitId == unitId);
+    _items.removeWhere(
+      (item) => item.productId == productId && item.unitId == unitId,
+    );
     notifyListeners();
   }
 

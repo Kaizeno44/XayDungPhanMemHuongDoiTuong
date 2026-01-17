@@ -5,6 +5,7 @@ using Identity.Domain.Entities; // 👈 QUAN TRỌNG: Dùng User từ Domain m�
 using Identity.API.Models;      // 👈 Để dùng CreateUserRequest (DTO)
 using System.Linq;
 using System.Threading.Tasks;
+using System; // Thêm System để dùng DateTime, Guid
 
 namespace Identity.API.Controllers
 {
@@ -29,13 +30,11 @@ namespace Identity.API.Controllers
                     .ThenInclude(ur => ur.Role)
                 .Select(u => new 
                 {
-                    id = u.Id,          // 👈 Sửa thành chữ thường cho chuẩn JSON (Frontend thích điều này)
+                    id = u.Id,          
                     email = u.Email,
                     fullName = u.FullName,
                     
-                    // 👇 QUAN TRỌNG: Lấy Role đầu tiên và đặt tên biến là "role" (viết thường)
                     // Logic: Nếu có role thì lấy tên, nếu không thì ghi "N/A"
-                    // Dịch: Thử lấy Role đầu tiên, nếu có (?) thì lấy tên, nếu null (??) thì trả về "N/A"
                     role = u.UserRoles.Select(ur => ur.Role.Name).FirstOrDefault() ?? "N/A",                        
                     status = u.IsActive ? "Active" : "Inactive"
                 })
@@ -54,8 +53,7 @@ namespace Identity.API.Controllers
                 return BadRequest(new { message = "Email này đã được sử dụng!" });
             }
 
-            // 2. MẶC ĐỊNH LÀ EMPLOYEE (Không cần if/else phức tạp nữa)
-            // Vì chức năng này là "Thêm nhân viên", nên chắc chắn vai trò là Employee
+            // 2. MẶC ĐỊNH LÀ EMPLOYEE 
             var roleName = "Employee"; 
 
             var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
@@ -73,14 +71,10 @@ namespace Identity.API.Controllers
                     Id = Guid.NewGuid(),
                     Email = request.Email,
                     FullName = request.FullName,
-                    PasswordHash = request.Password, // Nhớ hash password sau này nhé
+                    PasswordHash = request.Password, // Lưu ý: Nên hash password thực tế
                     IsActive = true,
                     IsOwner = false,
-                    // 👇 QUAN TRỌNG:
-                    // Nếu người đang gọi API này là Owner (ông Ba Tèo), 
-                    // thì nhân viên mới tạo ra PHẢI thuộc về Store của ông Ba Tèo.
-                    // (Hiện tại bạn đang để null, tạm thời ok, nhưng sau này phải sửa chỗ này để lấy StoreId từ Token của người tạo)
-                    StoreId = null 
+                    StoreId = null // TODO: Sau này lấy StoreId từ Token của người tạo (Owner)
                 };
 
                 _context.Users.Add(user);
@@ -104,5 +98,66 @@ namespace Identity.API.Controllers
                 return StatusCode(500, "Lỗi: " + ex.Message);
             }
         }
+
+        // ==========================================
+        // 👇 3. NEW API: LƯU DEVICE TOKEN CHO FCM 👇
+        // ==========================================
+        [HttpPost("device-token")]
+        public async Task<IActionResult> SaveDeviceToken([FromBody] SaveDeviceTokenRequest request)
+        {
+            // Validation cơ bản
+            if (string.IsNullOrEmpty(request.DeviceToken))
+            {
+                return BadRequest(new { message = "Device Token không được để trống" });
+            }
+
+            try 
+            {
+                // 1. Kiểm tra xem Token này đã tồn tại với User này chưa
+                var existingDevice = await _context.UserDevices
+                    .FirstOrDefaultAsync(d => d.DeviceToken == request.DeviceToken && d.UserId == request.UserId);
+
+                if (existingDevice == null)
+                {
+                    // 2. Nếu chưa có -> Tạo mới
+                    var newDevice = new UserDevice
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = request.UserId,
+                        DeviceToken = request.DeviceToken,
+                        Platform = request.Platform ?? "Android", // Mặc định là Android nếu null
+                        LastActiveAt = DateTime.UtcNow
+                    };
+
+                    _context.UserDevices.Add(newDevice);
+                    await _context.SaveChangesAsync();
+                    
+                    return Ok(new { message = "Đã lưu Device Token thành công (New)!" });
+                }
+                else
+                {
+                    // 3. Nếu có rồi -> Update thời gian online (Active)
+                    existingDevice.LastActiveAt = DateTime.UtcNow;
+                    // Cập nhật lại platform phòng trường hợp user đổi máy nhưng dùng lại backup cũ
+                    existingDevice.Platform = request.Platform ?? existingDevice.Platform;
+                    
+                    await _context.SaveChangesAsync();
+                    
+                    return Ok(new { message = "Device Token đã tồn tại, cập nhật trạng thái Active." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi lưu token: " + ex.Message });
+            }
+        }
+    }
+
+    // 👇 DTO Class (Đặt ở đây cho tiện hoặc chuyển sang folder Models)
+    public class SaveDeviceTokenRequest
+    {
+        public Guid UserId { get; set; }
+        public string DeviceToken { get; set; }
+        public string? Platform { get; set; } // "android", "ios", "web"
     }
 }

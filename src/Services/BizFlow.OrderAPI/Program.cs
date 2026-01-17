@@ -2,8 +2,12 @@ using BizFlow.OrderAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using BizFlow.OrderAPI.Services;
 using QuestPDF.Infrastructure;
+<<<<<<< HEAD
 using Shared.Kernel.Extensions;
 using System.Reflection;
+=======
+using MassTransit; // [1] Thêm thư viện MassTransit
+>>>>>>> main
 
 QuestPDF.Settings.License = LicenseType.Community;
 
@@ -14,6 +18,25 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<OrderDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
 // ----------------------------
+
+// --- [2] CẤU HÌNH RABBITMQ (MASS TRANSIT) ---
+builder.Services.AddMassTransit(x =>
+{
+    // Cấu hình sử dụng RabbitMQ
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        // Lưu ý: Nếu chạy Docker Compose thì host thường là "rabbitmq"
+        // Nếu chạy Debug Visual Studio (Local) thì là "localhost"
+        cfg.Host("localhost", "/", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
+
+        cfg.ConfigureEndpoints(context);
+    });
+});
+// ---------------------------------------------
 
 builder.Services.AddHttpClient<ProductServiceClient>(client =>
 {
@@ -32,13 +55,15 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
         builder => builder
-            .WithOrigins("http://localhost:3000")
+            .WithOrigins("http://localhost:3000") // URL của Frontend Next.js
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials());
 });
 
 var app = builder.Build();
+
+// --- Middleware Pipeline ---
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -51,6 +76,7 @@ app.MapHub<BizFlow.OrderAPI.Hubs.NotificationHub>("/hubs/notifications");
 app.UseAuthorization();
 app.MapControllers();
 
+// --- DATA SEEDING (Tạo dữ liệu mẫu) ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -59,6 +85,7 @@ using (var scope = app.Services.CreateScope())
         var context = services.GetRequiredService<OrderDbContext>();
         context.Database.EnsureCreated();
 
+        // 1. Tạo Khách hàng mẫu
         if (!context.Customers.Any())
         {
             context.Customers.Add(new BizFlow.OrderAPI.DbModels.Customer
@@ -83,6 +110,7 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine("--> Order Service: Đã tạo DB + dữ liệu khách hàng mẫu thành công!");
         }
 
+        // 2. Tạo Lịch sử Nợ & Đơn hàng mẫu
         if (!context.DebtLogs.Any())
         {
             var customerId = Guid.Parse("c4608c0c-847e-468e-976e-5776d5483011");

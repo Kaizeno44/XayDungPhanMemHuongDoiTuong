@@ -11,7 +11,11 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <PackageReference Include="FirebaseAdmin" Version="3.4.0" />
+<<<<<<< HEAD
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.5" />
+=======
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.0" />
+>>>>>>> main
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
     
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
@@ -25,6 +29,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.1" />
     
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
     

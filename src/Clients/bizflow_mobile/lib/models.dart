@@ -1,3 +1,5 @@
+// lib/models.dart
+
 // ================= CART ITEM =================
 class CartItem {
   final int productId;
@@ -6,6 +8,7 @@ class CartItem {
   final String unitName;
   final double price;
   int quantity;
+  final double maxStock; // 👈 MỚI: Lưu trữ tồn kho tối đa
 
   CartItem({
     required this.productId,
@@ -14,6 +17,7 @@ class CartItem {
     required this.unitName,
     required this.price,
     this.quantity = 1,
+    required this.maxStock, // 👈 Bắt buộc truyền vào
   });
 
   double get total => price * quantity;
@@ -25,27 +29,48 @@ class CartItem {
 
 // ================= CUSTOMER =================
 class Customer {
-  final String id;
+  String id;
   final String name;
+  final String phone;
+  final String address;
+  double currentDebt;
 
-  Customer({required this.id, required this.name});
+  Customer({
+    required this.id,
+    required this.name,
+    this.phone = '',
+    this.address = '',
+    this.currentDebt = 0.0,
+  });
 
   factory Customer.fromJson(Map<String, dynamic> json) {
     return Customer(
       id: json['id']?.toString() ?? '',
-      name: json['fullName'] ?? json['name'] ?? 'Khách hàng',
+      name: json['fullName'] ?? json['name'] ?? 'Khách lẻ',
+      phone: json['phoneNumber'] ?? '',
+      address: json['address'] ?? '',
+      currentDebt: (json['currentDebt'] as num?)?.toDouble() ?? 0.0,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'fullName': name,
+      'phoneNumber': phone,
+      'address': address,
+      'currentDebt': 0,
+    };
   }
 }
 
-// ================= PRODUCT (ĐÃ SỬA LỖI) =================
+// ================= PRODUCT =================
 class Product {
   final int id;
   final String name;
   final String? description;
   final String? imageUrl;
   final List<ProductUnit> productUnits;
-  double inventoryQuantity; // Thêm trường tồn kho
+  double inventoryQuantity;
 
   Product({
     required this.id,
@@ -53,11 +78,11 @@ class Product {
     this.description,
     this.imageUrl,
     required this.productUnits,
-    this.inventoryQuantity = 0.0, // Khởi tạo giá trị mặc định
+    this.inventoryQuantity = 0.0,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    var unitsJson = json['productUnits'] as List? ?? []; // Xử lý null an toàn
+    var unitsJson = json['productUnits'] as List? ?? [];
     List<ProductUnit> units = unitsJson
         .map((e) => ProductUnit.fromJson(e))
         .toList();
@@ -68,11 +93,11 @@ class Product {
       description: json['description'],
       imageUrl: json['imageUrl'],
       productUnits: units,
-      inventoryQuantity: (json['inventory']?['quantity'] as num?)?.toDouble() ?? 0.0, // Lấy tồn kho từ API
+      inventoryQuantity:
+          (json['inventory']?['quantity'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
-  // Phương thức copyWith để cập nhật sản phẩm
   Product copyWith({
     int? id,
     String? name,
@@ -91,24 +116,18 @@ class Product {
     );
   }
 
-  // --- LOGIC MỚI: Lấy đơn vị mặc định (Base Unit) ---
   ProductUnit? get _defaultUnit {
     if (productUnits.isEmpty) return null;
-    // Ưu tiên lấy đơn vị cơ bản, nếu không có thì lấy cái đầu tiên
     return productUnits.firstWhere(
       (u) => u.isBaseUnit,
       orElse: () => productUnits.first,
     );
   }
 
-  // Sửa lỗi: Trả về 0.0 nếu không có đơn vị, thay vì null
-  double get price => _defaultUnit?.price ?? 0.0;
-
-  // Sửa lỗi: Trả về ID của đơn vị mặc định
+  double get basePrice => _defaultUnit?.price ?? 0.0;
   int get unitId => _defaultUnit?.id ?? 0;
-
-  // Sửa lỗi: Trả về Tên của đơn vị mặc định
   String get unitName => _defaultUnit?.unitName ?? '';
+  double get price => basePrice;
 }
 
 // ================= PRODUCT UNIT =================
@@ -129,7 +148,7 @@ class ProductUnit {
     return ProductUnit(
       id: json['id'] ?? 0,
       unitName: json['unitName'] ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0, // Parse an toàn
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
       isBaseUnit: json['isBaseUnit'] ?? false,
     );
   }
@@ -137,28 +156,43 @@ class ProductUnit {
 
 // ================= HELPER CLASSES =================
 class ProductPriceResult {
+  final int productId;
+  final int unitId;
   final double price;
-  final String unitName;
 
-  ProductPriceResult({required this.price, required this.unitName});
+  ProductPriceResult({
+    required this.productId,
+    required this.unitId,
+    required this.price,
+  });
 
   factory ProductPriceResult.fromJson(Map<String, dynamic> json) {
     return ProductPriceResult(
-      price: (json['price'] as num).toDouble(),
-      unitName: json['unitName'],
+      productId: json['productId'] ?? 0,
+      unitId: json['unitId'] ?? 0,
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
 
 class SimpleCheckStockResult {
-  final bool isEnough;
+  final int productId;
+  final int unitId;
+  final bool isAvailable;
   final String message;
 
-  SimpleCheckStockResult({required this.isEnough, required this.message});
+  SimpleCheckStockResult({
+    required this.productId,
+    required this.unitId,
+    required this.isAvailable,
+    required this.message,
+  });
 
   factory SimpleCheckStockResult.fromJson(Map<String, dynamic> json) {
     return SimpleCheckStockResult(
-      isEnough: json['isEnough'] ?? false,
+      productId: json['productId'] ?? 0,
+      unitId: json['unitId'] ?? 0,
+      isAvailable: json['isEnough'] ?? json['isAvailable'] ?? false,
       message: json['message'] ?? '',
     );
   }

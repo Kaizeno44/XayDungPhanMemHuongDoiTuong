@@ -23,6 +23,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   void initState() {
     super.initState();
+    // Chọn đơn vị mặc định (Base Unit)
     _selectedUnit = widget.product.productUnits.firstWhere(
       (unit) => unit.isBaseUnit,
       orElse: () => widget.product.productUnits.first,
@@ -39,53 +40,52 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _selectedUnit!.id,
         _quantity.toDouble(),
       );
-      setState(() {
-        _stockMessage = result.message;
-      });
+      if (mounted) {
+        setState(() {
+          _stockMessage = result.message;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _stockMessage = 'Lỗi kiểm tra tồn kho: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _stockMessage = 'Lỗi kiểm tra tồn kho: $e';
+        });
+      }
     }
   }
 
   void _updateQuantity(int change) {
     setState(() {
-      _quantity = (_quantity + change).clamp(
-        1,
-        999,
-      ); // Giới hạn số lượng từ 1 đến 999
+      _quantity = (_quantity + change).clamp(1, 999); // Giới hạn số lượng
     });
     _checkStock();
   }
 
-  void _addToCart() async {
-    debugPrint("ProductDetailScreen: _addToCart called.");
-    if (_selectedUnit == null) {
-      debugPrint("ProductDetailScreen: _selectedUnit is null. Cannot add to cart.");
-      return;
-    }
+  Future<void> _addToCart() async {
+    if (_selectedUnit == null) return;
 
-    debugPrint("ProductDetailScreen: Checking stock for Product ID: ${widget.product.id}, Unit ID: ${_selectedUnit!.id}, Quantity: $_quantity");
+    // 1. Kiểm tra tồn kho qua API trước
     final stockResult = await _apiService.simpleCheckStock(
       widget.product.id,
       _selectedUnit!.id,
       _quantity.toDouble(),
     );
-    debugPrint("ProductDetailScreen: Stock check result - isEnough: ${stockResult.isEnough}, Message: ${stockResult.message}");
 
-    if (!stockResult.isEnough) {
-      // ignore: use_build_context_synchronously
+    if (!mounted) return;
+
+    // 👇 ĐÃ SỬA: Dùng .isAvailable thay vì .isEnough
+    if (!stockResult.isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(stockResult.message),
+          backgroundColor: Colors.red,
           duration: const Duration(seconds: 2),
         ),
       );
-      debugPrint("ProductDetailScreen: Not enough stock. Showing SnackBar and returning.");
       return;
     }
 
+    // 2. Tạo CartItem
     final cartItem = CartItem(
       productId: widget.product.id,
       productName: widget.product.name,
@@ -93,21 +93,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       unitName: _selectedUnit!.unitName,
       price: _selectedUnit!.price,
       quantity: _quantity,
+      maxStock: widget.product.inventoryQuantity,
     );
-    // ignore: use_build_context_synchronously
-    Provider.of<CartProvider>(context, listen: false).addToCart(cartItem);
-    debugPrint("ProductDetailScreen: Item added to cart: ${cartItem.productName}, Quantity: ${cartItem.quantity}");
 
-    // ignore: use_build_context_synchronously
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
+    // 3. Gọi CartProvider để thêm vào giỏ (và nhận về lỗi nếu có)
+    final errorMsg = Provider.of<CartProvider>(
+      context,
+      listen: false,
+    ).addToCart(cartItem);
+
+    if (errorMsg == null) {
+      // Thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
         ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-    debugPrint("ProductDetailScreen: Showing success SnackBar.");
+      );
+    } else {
+      // Thất bại (do logic trong CartProvider chặn)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -125,7 +140,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Product Image (Placeholder)
+            // Ảnh sản phẩm
             Center(
               child: Container(
                 width: 200,
@@ -151,17 +166,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             const SizedBox(height: 24),
 
+            // Tên sản phẩm
             Text(
               widget.product.name,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+            // Mô tả
             Text(
               widget.product.description ?? 'Không có mô tả.',
               style: TextStyle(fontSize: 16, color: Colors.grey[700]),
             ),
             const SizedBox(height: 24),
 
+            // Chọn đơn vị tính
             const Text(
               'Đơn vị tính:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -194,6 +212,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Giá
             if (_selectedUnit != null)
               Text(
                 'Giá: ${currencyFormat.format(_selectedUnit!.price)} / ${_selectedUnit!.unitName}',
@@ -205,6 +224,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             const SizedBox(height: 24),
 
+            // Chọn số lượng
             const Text(
               'Số lượng:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -232,9 +252,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   child: Text(
                     _stockMessage,
                     style: TextStyle(
-                      color: _stockMessage.contains('Đủ hàng')
-                          ? Colors.green
-                          : Colors.red,
+                      color:
+                          _stockMessage.toLowerCase().contains('không') ||
+                              _stockMessage.toLowerCase().contains('not')
+                          ? Colors.red
+                          : Colors.green,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -243,6 +265,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             const SizedBox(height: 32),
 
+            // Nút Thêm vào giỏ
             Center(
               child: ElevatedButton.icon(
                 onPressed: _addToCart,

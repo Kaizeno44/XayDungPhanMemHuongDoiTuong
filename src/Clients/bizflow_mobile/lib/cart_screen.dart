@@ -1,14 +1,65 @@
+// lib/cart_screen.dart
 import 'package:bizflow_mobile/cart_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'checkout_screen.dart';
+import 'models.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
-  // Store ID này phải là GUID chính xác có trong Database
   static const String currentStoreId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
+
+  void _showQuantityDialog(
+    BuildContext context,
+    CartItem item,
+    CartProvider cart,
+  ) {
+    final controller = TextEditingController(text: item.quantity.toString());
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Nhập số lượng (Kho: ${item.maxStock.toInt()})"),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: "Số lượng",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newQty = int.tryParse(controller.text);
+              if (newQty != null) {
+                // 👇 Gọi hàm update và nhận lỗi (nếu có)
+                final error = cart.updateQuantity(
+                  item.productId,
+                  item.unitId,
+                  newQty,
+                );
+                if (error != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(error), backgroundColor: Colors.red),
+                  );
+                }
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text("Xác nhận"),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,40 +99,165 @@ class CartScreen extends StatelessWidget {
                     separatorBuilder: (_, _) => const Divider(),
                     itemBuilder: (ctx, i) {
                       final item = cart.items[i];
-                      return ListTile(
-                        leading: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.inventory_2,
-                            color: Colors.blue,
-                          ),
-                        ),
-                        title: Text(
-                          item.productName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          "${currencyFormat.format(item.price)} x ${item.quantity} ${item.unitName}",
-                          style: TextStyle(color: Colors.grey[700]),
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                          ),
-                          onPressed: () {
-                            cart.removeItem(item.productId, item.unitId);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Đã xóa sản phẩm"),
-                                duration: Duration(seconds: 1),
+                      return Card(
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Dòng 1: Tên + Xóa
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.productName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () => cart.removeItem(
+                                      item.productId,
+                                      item.unitId,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            );
-                          },
+
+                              // Dòng 2: Giá & Tồn kho
+                              Row(
+                                children: [
+                                  Text(
+                                    "${currencyFormat.format(item.price)} / ${item.unitName}",
+                                    style: TextStyle(
+                                      color: Colors.grey[700],
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: Colors.orange.shade200,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      "Kho: ${item.maxStock.toInt()}",
+                                      style: TextStyle(
+                                        color: Colors.orange.shade800,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Dòng 3: Nút tăng giảm
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.remove,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            cart.updateQuantity(
+                                              item.productId,
+                                              item.unitId,
+                                              item.quantity - 1,
+                                            );
+                                          },
+                                        ),
+                                        InkWell(
+                                          onTap: () => _showQuantityDialog(
+                                            context,
+                                            item,
+                                            cart,
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 10,
+                                            ),
+                                            color: Colors.grey.shade100,
+                                            child: Text(
+                                              "${item.quantity}",
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.add, size: 20),
+                                          onPressed: () {
+                                            // 👇 Xử lý lỗi khi bấm +
+                                            final error = cart.updateQuantity(
+                                              item.productId,
+                                              item.unitId,
+                                              item.quantity + 1,
+                                            );
+                                            if (error != null) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(error),
+                                                  backgroundColor: Colors.red,
+                                                  duration: const Duration(
+                                                    milliseconds: 1000,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    currencyFormat.format(item.total),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -129,9 +305,8 @@ class CartScreen extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  // ĐÃ SỬA: Chỉ truyền storeId, không truyền customerId rỗng nữa
                                   builder: (_) => const CheckoutScreen(
-                                    storeId: currentStoreId,
+                                    storeId: CartScreen.currentStoreId,
                                   ),
                                 ),
                               );

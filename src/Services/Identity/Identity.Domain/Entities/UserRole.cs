@@ -1,13 +1,14 @@
-using System;
+using Microsoft.AspNetCore.Identity;
 
 namespace Identity.Domain.Entities
 {
-    public class UserRole
+    // 👇 Kế thừa IdentityUserRole<Guid>
+    public class UserRole : IdentityUserRole<Guid>
     {
-        public Guid UserId { get; set; }
-        public User User { get; set; }
+        // ❌ ĐÃ XÓA: UserId và RoleId (Cha đã có, để lại là bị lỗi ngay)
 
-        public Guid RoleId { get; set; }
-        public Role Role { get; set; }
+        // 👇 Chỉ giữ lại Navigation Property để code dễ gọi (u.UserRoles...)
+        public virtual User User { get; set; }
+        public virtual Role Role { get; set; }
     }
 }

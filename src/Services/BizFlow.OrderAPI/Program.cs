@@ -2,12 +2,9 @@ using BizFlow.OrderAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using BizFlow.OrderAPI.Services;
 using QuestPDF.Infrastructure;
-<<<<<<< HEAD
 using Shared.Kernel.Extensions;
 using System.Reflection;
-=======
-using MassTransit; // [1] Thêm thư viện MassTransit
->>>>>>> main
+using MassTransit;
 
 QuestPDF.Settings.License = LicenseType.Community;
 

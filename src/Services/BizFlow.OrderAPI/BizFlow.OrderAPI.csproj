@@ -7,11 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-<<<<<<< HEAD
-    <PackageReference Include="MassTransit.RabbitMQ" Version="8.2.5" />
-=======
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.7" />
->>>>>>> main
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.22" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

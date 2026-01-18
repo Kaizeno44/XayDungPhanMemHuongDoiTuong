@@ -1,90 +1,179 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:provider/provider.dart';
 import '../models.dart';
-import '../core/config/api_config.dart';
-import '../providers/auth_provider.dart';
+import '../product_service.dart';
 
 class StockImportScreen extends StatefulWidget {
-  final Product product;
+  // 👇 QUAN TRỌNG: Dấu ? nghĩa là có thể null.
+  // Không có 'required' nghĩa là truyền cũng được, không truyền cũng được.
+  final Product? product;
 
-  const StockImportScreen({super.key, required this.product});
+  const StockImportScreen({super.key, this.product});
 
   @override
   State<StockImportScreen> createState() => _StockImportScreenState();
 }
 
 class _StockImportScreenState extends State<StockImportScreen> {
-  final _formKey = GlobalKey<FormState>();
-  ProductUnit? _selectedUnit;
-  final _quantityController = TextEditingController();
-  final _costPriceController = TextEditingController();
-  final _supplierController = TextEditingController();
-  final _noteController = TextEditingController();
+  final ProductService _productService = ProductService();
+  final TextEditingController _searchController = TextEditingController();
+
+  List<Product> _allProducts = [];
+  List<Product> _displayProducts = [];
+
+  final Map<int, double> _importCart = {};
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedUnit = widget.product.productUnits.firstWhere(
-      (u) => u.isBaseUnit,
-      orElse: () => widget.product.productUnits.first,
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      final products = await _productService.getProducts();
+      if (mounted) {
+        setState(() {
+          _allProducts = products;
+
+          // 👇 LOGIC XỬ LÝ 2 TRƯỜNG HỢP:
+          if (widget.product != null) {
+            // TRƯỜNG HỢP 1: Vào từ trang Chi tiết sản phẩm
+            // -> Chỉ hiển thị đúng sản phẩm đó
+            _displayProducts = products
+                .where((p) => p.id == widget.product!.id)
+                .toList();
+            _searchController.text = widget.product!.name; // Điền sẵn tên
+
+            // Tự động bật popup nhập số lượng luôn cho tiện
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final currentProduct = products.firstWhere(
+                (p) => p.id == widget.product!.id,
+                orElse: () => widget.product!,
+              );
+              _showInputQuantityDialog(currentProduct);
+            });
+          } else {
+            // TRƯỜNG HỢP 2: Vào từ Dashboard
+            // -> Hiển thị tất cả sản phẩm
+            _displayProducts = products;
+          }
+        });
+      }
+    } catch (e) {
+      print("Lỗi tải sp: $e");
+    }
+  }
+
+  void _filterProducts(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _displayProducts = _allProducts;
+      } else {
+        _displayProducts = _allProducts
+            .where((p) => p.name.toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+    });
+  }
+
+  void _showInputQuantityDialog(Product product) {
+    final qtyController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Nhập thêm: ${product.name}"),
+        content: TextField(
+          controller: qtyController,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: "Số lượng nhập",
+            hintText: "VD: 100",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final qty = double.tryParse(qtyController.text);
+              if (qty != null && qty > 0) {
+                setState(() {
+                  _importCart[product.id] =
+                      (_importCart[product.id] ?? 0) + qty;
+                });
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Đã thêm $qty ${product.unitName} vào phiếu"),
+                  ),
+                );
+              }
+            },
+            child: const Text("Xác nhận"),
+          ),
+        ],
+      ),
     );
   }
 
-  @override
-  void dispose() {
-    _quantityController.dispose();
-    _costPriceController.dispose();
-    _supplierController.dispose();
-    _noteController.dispose();
-    super.dispose();
-  }
-
   Future<void> _submitImport() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_importCart.isEmpty) return;
 
     setState(() => _isLoading = true);
 
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final storeId = authProvider.currentUser?.storeId;
-
-    final body = {
-      'productId': widget.product.id,
-      'unitId': _selectedUnit!.id,
-      'quantity': double.parse(_quantityController.text),
-      'costPrice': double.parse(_costPriceController.text),
-      'supplierName': _supplierController.text,
-      'note': _noteController.text,
-      'storeId': storeId,
-    };
+    final itemsToSend = _importCart.entries
+        .map((e) => {"productId": e.key, "quantity": e.value, "importPrice": 0})
+        .toList();
 
     try {
-      final response = await http.post(
-        Uri.parse(ApiConfig.stockImports),
-        headers: ApiConfig.headers,
-        body: jsonEncode(body),
-      );
+      await _productService.importStock(itemsToSend, "Nhập từ Mobile App");
 
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Nhập kho thành công!')),
-          );
-          Navigator.pop(context, true);
-        }
-      } else {
-        throw Exception('Lỗi: ${response.body}');
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _importCart.clear();
+        _isLoading = false;
+      });
+
+      // Reload lại để cập nhật số tồn kho hiển thị ngay lập tức
+      await _loadProducts();
+
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("✅ Thành công"),
+          content: const Text("Đã nhập kho xong!"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Đóng Dialog thông báo
+
+                // Nếu đang ở chế độ nhập 1 sản phẩm (từ trang chi tiết) -> Quay về trang trước luôn
+                if (widget.product != null) {
+                  Navigator.pop(
+                    context,
+                    true,
+                  ); // Trả về true để trang trước biết mà refresh
+                }
+              },
+              child: const Text("Đóng"),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text("Lỗi: $e"), backgroundColor: Colors.red),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -92,79 +181,92 @@ class _StockImportScreenState extends State<StockImportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tạo phiếu nhập kho'),
-        backgroundColor: Colors.orange[800],
+        title: const Text("Nhập kho"),
+        backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sản phẩm: ${widget.product.name}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              
-              DropdownButtonFormField<ProductUnit>(
-                value: _selectedUnit,
-                decoration: const InputDecoration(labelText: 'Đơn vị nhập'),
-                items: widget.product.productUnits.map((unit) {
-                  return DropdownMenuItem(
-                    value: unit,
-                    child: Text(unit.unitName),
-                  );
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedUnit = val),
-              ),
-              
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _quantityController,
-                decoration: const InputDecoration(labelText: 'Số lượng nhập', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-                validator: (val) => (val == null || val.isEmpty) ? 'Vui lòng nhập số lượng' : null,
-              ),
-              
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _costPriceController,
-                decoration: const InputDecoration(labelText: 'Giá vốn (Giá nhập)', border: OutlineInputBorder(), suffixText: 'đ'),
-                keyboardType: TextInputType.number,
-                validator: (val) => (val == null || val.isEmpty) ? 'Vui lòng nhập giá vốn' : null,
-              ),
-              
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _supplierController,
-                decoration: const InputDecoration(labelText: 'Nhà cung cấp', border: OutlineInputBorder()),
-              ),
-              
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _noteController,
-                decoration: const InputDecoration(labelText: 'Ghi chú', border: OutlineInputBorder()),
-                maxLines: 3,
-              ),
-              
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submitImport,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800], foregroundColor: Colors.white),
-                  child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('XÁC NHẬN NHẬP KHO', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          if (_importCart.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _submitImport,
+                icon: const Icon(Icons.save),
+                label: Text("Lưu (${_importCart.length})"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
                 ),
               ),
-            ],
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterProducts,
+              decoration: const InputDecoration(
+                hintText: "Tìm vật liệu...",
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  vertical: 0,
+                  horizontal: 10,
+                ),
+              ),
+            ),
           ),
-        ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _displayProducts.length,
+              itemBuilder: (context, index) {
+                final product = _displayProducts[index];
+                final qtyInCart = _importCart[product.id] ?? 0;
+
+                return Card(
+                  color: qtyInCart > 0 ? Colors.blue[50] : Colors.white,
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: ListTile(
+                    title: Text(
+                      product.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      "Kho hiện tại: ${product.inventoryQuantity} ${product.unitName}",
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (qtyInCart > 0)
+                          Text(
+                            "+$qtyInCart ",
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            color: Colors.blue,
+                            size: 28,
+                          ),
+                          onPressed: () => _showInputQuantityDialog(product),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

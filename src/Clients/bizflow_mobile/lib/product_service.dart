@@ -10,7 +10,6 @@ class ProductService {
   final String _productCacheBox = 'productCache';
 
   /// Lấy danh sách sản phẩm (Hỗ trợ tìm kiếm)
-  // 👇 SỬA ĐỔI: Thêm tham số optional {String? keyword}
   Future<List<Product>> getProducts({String? keyword}) async {
     // 1. Xây dựng URL có chứa tham số tìm kiếm
     Uri url = Uri.parse(ApiConfig.products);
@@ -117,6 +116,44 @@ class ProductService {
       }
     } catch (e) {
       throw Exception('Lỗi khi lấy chi tiết: $e');
+    }
+  }
+
+  // ===========================================================================
+  // 👇 HÀM MỚI: NHẬP KHO (STOCK IMPORT)
+  // ===========================================================================
+  Future<bool> importStock(
+    List<Map<String, dynamic>> items,
+    String note,
+  ) async {
+    // URL API nhập kho (Lưu ý: dùng productBaseUrl vì API này nằm bên ProductAPI)
+    final url = Uri.parse('${ApiConfig.productBaseUrl}/api/Stock/import');
+
+    final body = {
+      "userId": 1, // Tạm thời hardcode userId, sau này lấy từ AuthProvider
+      "note": note,
+      "items": items,
+    };
+
+    try {
+      print("🔵 [ProductService] Đang gửi phiếu nhập kho: $body");
+
+      final response = await http
+          .post(url, headers: ApiConfig.headers, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 30)); // Timeout 30s cho chắc ăn
+
+      print("🟢 [ProductService] Kết quả nhập kho: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        throw Exception(
+          "Lỗi server (${response.statusCode}): ${response.body}",
+        );
+      }
+    } catch (e) {
+      print("🔴 [ProductService] Lỗi nhập kho: $e");
+      throw Exception("Không thể nhập kho: $e");
     }
   }
 }

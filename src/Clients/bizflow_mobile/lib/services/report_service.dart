@@ -1,23 +1,54 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/dashboard_stats.dart';
+import '../core/config/api_config.dart'; // Import file config chứa URL
+
+// ... imports
 
 class ReportService {
   Future<DashboardStats> getOwnerDashboardStats() async {
-    // Giả lập delay mạng
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final uri = Uri.parse('${ApiConfig.orderBaseUrl}/api/Dashboard/stats');
+      final response = await http.get(uri);
 
-    // Dữ liệu mẫu (Hardcode) - Sau này gọi API backend
-    return DashboardStats(
-      todayRevenue: 2500000, // 2.5 triệu
-      totalDebt: 5400000, // 5.4 triệu (Số nợ cần báo động)
-      weeklyRevenue: [
-        DailyRevenue('T2', 1500000),
-        DailyRevenue('T3', 2000000),
-        DailyRevenue('T4', 1800000),
-        DailyRevenue('T5', 2200000),
-        DailyRevenue('T6', 2500000), // Hôm nay
-        DailyRevenue('T7', 3000000),
-        DailyRevenue('CN', 2800000),
-      ],
-    );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        return DashboardStats(
+          todayRevenue: (data['todayRevenue'] as num).toDouble(),
+          todayOrders: (data['todayOrders'] ?? 0) as int, // Map số đơn
+          totalDebt: (data['totalDebt'] as num).toDouble(),
+
+          weeklyRevenue: (data['weeklyRevenue'] as List).map((item) {
+            return DailyRevenue(
+              item['dayName'],
+              (item['amount'] as num).toDouble(),
+            );
+          }).toList(),
+
+          // Map Top sản phẩm
+          topProducts: (data['topProducts'] as List? ?? []).map((item) {
+            return TopProduct(
+              item['productId'] ?? 0,
+              item['productName'] ??
+                  'Sản phẩm #${item['productId']}', // Tạm thời
+              (item['totalSold'] as num).toDouble(),
+              (item['totalRevenue'] as num).toDouble(),
+            );
+          }).toList(),
+        );
+      } else {
+        throw Exception("Lỗi API");
+      }
+    } catch (e) {
+      // Return default empty data
+      return DashboardStats(
+        todayRevenue: 0,
+        todayOrders: 0,
+        totalDebt: 0,
+        weeklyRevenue: [],
+        topProducts: [],
+      );
+    }
   }
 }

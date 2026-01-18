@@ -4,6 +4,13 @@ import api from "@/utils/api";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
 
+// --- THÊM: Import các Component của Shadcn UI ---
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Loader2 } from "lucide-react" // Icon xoay xoay đẹp hơn
+
 export default function LoginPage() {
   const [email, setEmail] = useState("admin@bizflow.com");
   const [password, setPassword] = useState("123456"); // Mật khẩu mặc định

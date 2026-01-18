@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // Import Hive
-import 'package:firebase_core/firebase_core.dart'; // [MỚI] Import Firebase Core
-// Import SignalR (Giữ nguyên của bạn)
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-// [MỚI] Import Service FCM bạn vừa tạo ở bước trước
+// --- SERVICE IMPORTS ---
+import 'cart_provider.dart';
 import 'services/fcm_service.dart';
 
-// Các import cũ của bạn
-import 'cart_provider.dart';
-import 'product_list_screen.dart';
-import 'screens/login_screen.dart';
+// --- PROVIDER IMPORTS ---
 import 'providers/auth_provider.dart';
+
+// --- SCREEN IMPORTS ---
+import 'screens/login_screen.dart';
+import 'product_list_screen.dart';
+import 'screens/owner_dashboard_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Khởi tạo Firebase (Cái này nhanh, nên await được)
+  // 1. Khởi tạo Firebase
   try {
     await Firebase.initializeApp();
     print("✅ Firebase đã khởi tạo thành công");
@@ -24,16 +26,13 @@ Future<void> main() async {
     print("❌ Lỗi khởi tạo Firebase: $e");
   }
 
-  // 2. [SỬA ĐỔI QUAN TRỌNG]
-  // Bỏ từ khóa 'await' ở đây đi.
-  // Để cho nó chạy ngầm (async), không bắt người dùng phải đợi lấy token xong mới thấy App.
+  // 2. Khởi tạo FCM
   FCMService().initialize();
 
   // 3. Khởi tạo Hive
   await Hive.initFlutter();
   await Hive.openBox('productCache');
 
-  // 4. Chạy App ngay lập tức
   runApp(
     MultiProvider(
       providers: [
@@ -50,17 +49,54 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe trạng thái đăng nhập từ AuthProvider
-    final authProvider = context.watch<AuthProvider>();
-
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'BizFlow Mobile', // Thêm title cho rõ ràng
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
-      // Logic điều hướng: Nếu đã đăng nhập -> Vào danh sách SP, chưa -> Vào Login
-      home: authProvider.isAuthenticated
-          ? const ProductListScreen()
-          : const LoginScreen(),
+      title: 'BizFlow Mobile',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue,
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+        ),
+      ),
+      // Logic điều hướng chính
+      home: Consumer<AuthProvider>(
+        builder: (context, auth, child) {
+          // 🔥 [MỚI] Màn hình chờ: Nếu chưa kiểm tra Hive xong -> Hiện loading
+          // Giúp tránh việc nháy màn hình Login khi vừa mở app
+          if (!auth.isAuthCheckComplete) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          // --- 1. CHƯA ĐĂNG NHẬP ---
+          if (!auth.isAuthenticated) {
+            return const LoginScreen();
+          }
+
+          // --- 2. ĐÃ ĐĂNG NHẬP -> PHÂN QUYỀN ---
+
+          final rawRole = auth.role;
+          print("🔍 DEBUG ROLE: '$rawRole'");
+
+          // Chuẩn hóa role
+          final role = rawRole?.trim().toLowerCase() ?? '';
+
+          // Kiểm tra quyền Owner
+          if (role == 'owner' || role == 'admin' || role == 'quản lý') {
+            print("✅ ĐIỀU HƯỚNG: -> Dashboard (Owner)");
+            return const OwnerDashboardScreen();
+          }
+
+          // Mặc định: Nhân viên
+          print("ℹ️ ĐIỀU HƯỚNG: -> Bán hàng (Staff)");
+          return const ProductListScreen();
+        },
+      ),
     );
   }
 }

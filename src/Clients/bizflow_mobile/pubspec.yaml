@@ -50,6 +50,7 @@ dependencies:
   flutter_spinkit: ^5.2.2
   firebase_core: ^3.1.0
   firebase_messaging: ^15.0.1
+  fl_chart: ^0.66.0  # Thư viện vẽ biểu đồ mạnh mẽ nhất cho Flutter
 
 dev_dependencies:
   flutter_test:

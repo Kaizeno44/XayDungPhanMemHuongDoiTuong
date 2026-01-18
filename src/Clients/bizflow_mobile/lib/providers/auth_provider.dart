@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../models.dart';
 import '../services/auth_service.dart';
-import '../services/fcm_service.dart'; // [MỚI] Import service này
+import '../services/fcm_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -12,23 +12,42 @@ class AuthProvider with ChangeNotifier {
   String? _token;
   bool _isLoading = false;
 
+  // 🔥 [MỚI] Biến này để tránh màn hình Login bị nháy khi vừa mở App
+  bool _isAuthCheckComplete = false;
+
+  // --- CÁC GETTER ---
   User? get currentUser => _currentUser;
   String? get token => _token;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _token != null;
+  bool get isAuthCheckComplete => _isAuthCheckComplete;
+
+  String? get role => _currentUser?.role;
 
   AuthProvider() {
     _loadAuthData();
   }
 
   Future<void> _loadAuthData() async {
-    var box = await Hive.openBox(_authBoxName);
-    _token = box.get('token');
-    final userData = box.get('user');
-    if (userData != null) {
-      _currentUser = User.fromJson(Map<String, dynamic>.from(userData));
+    try {
+      var box = await Hive.openBox(_authBoxName);
+      _token = box.get('token');
+      final userData = box.get('user');
+
+      if (userData != null) {
+        // Ép kiểu an toàn hơn
+        _currentUser = User.fromJson(Map<String, dynamic>.from(userData));
+      }
+    } catch (e) {
+      print("⚠️ Lỗi đọc cache auth: $e");
+      // Nếu lỗi file cache, clear luôn để tránh crash lần sau
+      var box = await Hive.openBox(_authBoxName);
+      await box.clear();
+    } finally {
+      // ✅ Đánh dấu là đã kiểm tra xong, dù có dữ liệu hay không
+      _isAuthCheckComplete = true;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   Future<bool> login(String email, String password) async {
@@ -42,6 +61,7 @@ class AuthProvider with ChangeNotifier {
 
       var box = await Hive.openBox(_authBoxName);
       await box.put('token', _token);
+
       await box.put('user', {
         'id': _currentUser!.id,
         'email': _currentUser!.email,
@@ -50,12 +70,10 @@ class AuthProvider with ChangeNotifier {
         'storeId': _currentUser!.storeId,
       });
 
-      // 👇 [QUAN TRỌNG] Gửi Token sau khi Login thành công 👇
+      // Gửi Token FCM
       if (_currentUser != null) {
-        // Gọi hàm đồng bộ token, truyền ID của user vào
         FCMService().syncTokenWithServer(_currentUser!.id.toString());
       }
-      // -----------------------------------------------------
 
       _isLoading = false;
       notifyListeners();

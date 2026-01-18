@@ -4,6 +4,10 @@ import 'package:intl/intl.dart';
 import 'cart_provider.dart';
 import 'models.dart';
 import 'core/api_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'screens/stock_import_screen.dart';
+import 'providers/auth_provider.dart';
+import 'product_service.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
@@ -16,19 +20,35 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final ApiService _apiService = ApiService();
+  final ProductService _productService = ProductService(); // Thêm service để lấy data mới
   ProductUnit? _selectedUnit;
   int _quantity = 1;
   String _stockMessage = '';
+  double _currentInventory = 0; // Biến local để cập nhật UI nhanh
 
   @override
   void initState() {
     super.initState();
+    _currentInventory = widget.product.inventoryQuantity;
     // Chọn đơn vị mặc định (Base Unit)
     _selectedUnit = widget.product.productUnits.firstWhere(
       (unit) => unit.isBaseUnit,
       orElse: () => widget.product.productUnits.first,
     );
     _checkStock();
+  }
+
+  Future<void> _refreshProductData() async {
+    try {
+      final updatedProduct = await _productService.getProductById(widget.product.id);
+      if (mounted) {
+        setState(() {
+          _currentInventory = updatedProduct.inventoryQuantity;
+        });
+      }
+    } catch (e) {
+      debugPrint("Lỗi cập nhật dữ liệu sản phẩm: $e");
+    }
   }
 
   Future<void> _checkStock() async {
@@ -142,26 +162,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           children: [
             // Ảnh sản phẩm
             Center(
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 200,
+                  height: 200,
                   color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(12),
-                  image:
-                      widget.product.imageUrl != null &&
+                  child: widget.product.imageUrl != null &&
                           widget.product.imageUrl!.isNotEmpty
-                      ? DecorationImage(
-                          image: NetworkImage(widget.product.imageUrl!),
+                      ? CachedNetworkImage(
+                          imageUrl: widget.product.imageUrl!,
                           fit: BoxFit.cover,
+                          placeholder: (context, url) => const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                          errorWidget: (context, url, error) => Icon(
+                            Icons.image,
+                            size: 100,
+                            color: Colors.grey[400],
+                          ),
                         )
-                      : null,
+                      : Icon(Icons.image, size: 100, color: Colors.grey[400]),
                 ),
-                child:
-                    widget.product.imageUrl == null ||
-                        widget.product.imageUrl!.isEmpty
-                    ? Icon(Icons.image, size: 100, color: Colors.grey[400])
-                    : null,
               ),
             ),
             const SizedBox(height: 24),
@@ -172,6 +194,68 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+
+            // Khu vực Quản lý kho (Chỉ dành cho Owner)
+            Consumer<AuthProvider>(
+              builder: (context, auth, child) {
+                if (auth.currentUser?.role != 'Owner') return const SizedBox();
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.inventory, color: Colors.orange),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'QUẢN LÝ KHO',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                            Text(
+                              'Hiện có: ${_currentInventory.toStringAsFixed(0)} ${widget.product.unitName}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => StockImportScreen(product: widget.product),
+                            ),
+                          );
+                          if (result == true) {
+                            _checkStock();
+                            _refreshProductData(); // Lấy số lượng mới từ server
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        child: const Text('NHẬP HÀNG'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
             // Mô tả
             Text(
               widget.product.description ?? 'Không có mô tả.',

@@ -50,7 +50,7 @@ class RagService:
         )
         print(f"✅ Đã nạp {len(ids)} sản phẩm.")
 
-    def search_product(self, query_text: str, n_results=1):
+    def search_product(self, query_text: str, n_results=1, threshold=0.5):
         if not self.collection: return None
 
         results = self.collection.query(
@@ -59,12 +59,21 @@ class RagService:
         )
         
         if results and results['ids'] and len(results['ids'][0]) > 0:
-            # Trả về đầy đủ thông tin
+            distance = results['distances'][0][0]
+            
+            # [FIX QUAN TRỌNG] Kiểm tra độ tương đồng
+            print(f"🔍 Query: '{query_text}' - Found: '{results['documents'][0][0]}' - Distance: {distance}")
+            
+            # Nếu khoảng cách lớn hơn ngưỡng (nghĩa là quá khác biệt), coi như không tìm thấy
+            if distance > threshold:
+                print(f"❌ Loại bỏ kết quả vì độ sai lệch quá cao ({distance} > {threshold})")
+                return None
+
             return {
                 "id": results['ids'][0][0],
                 "name": results['documents'][0][0],
-                "metadata": results['metadatas'][0][0], # Chứa price, unit, image
-                "distance": results['distances'][0][0]
+                "metadata": results['metadatas'][0][0],
+                "distance": distance
             }
         return None
 

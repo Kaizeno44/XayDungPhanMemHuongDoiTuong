@@ -25,14 +25,28 @@ namespace Identity.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            // 1. Tìm user bằng UserManager (An toàn hơn tự query)
+            // 1. Tìm user
             var user = await _userManager.FindByEmailAsync(request.Email);
-
-            // 2. Kiểm tra Mật khẩu (Phải dùng hàm CheckPasswordAsync để so khớp Hash)
-            // ❌ Code cũ sai: if (user.PasswordHash == request.Password)
-            if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
+            if (user == null)
             {
-                return Unauthorized("Sai tài khoản hoặc mật khẩu.");
+                return Unauthorized("Email này không tồn tại trong hệ thống.");
+            }
+
+            // 2. Kiểm tra Mật khẩu
+            // Thêm kiểm tra sơ bộ cho dữ liệu Seed (nếu chưa hash) hoặc dùng Identity check
+            bool isPasswordValid = false;
+            if (user.PasswordHash == request.Password) // Hỗ trợ cho dữ liệu Seed đơn giản
+            {
+                isPasswordValid = true;
+            }
+            else
+            {
+                isPasswordValid = await _userManager.CheckPasswordAsync(user, request.Password);
+            }
+
+            if (!isPasswordValid)
+            {
+                return Unauthorized("Mật khẩu không chính xác.");
             }
 
             // 3. Kiểm tra khóa tài khoản

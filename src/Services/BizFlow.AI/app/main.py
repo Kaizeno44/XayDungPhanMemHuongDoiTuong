@@ -77,23 +77,20 @@ async def analyze_voice(file: UploadFile = File(...)):
         search_result = rag_client.search_product(raw_name)
         
         if search_result:
-            # [QUAN TRỌNG] Gán ID thật từ DB để Person C tạo đơn
-            item["product_id"] = int(search_result["id"]) # Chuyển về int cho khớp .NET
-            item["product_name"] = search_result["name"]  # Lấy tên chuẩn
+            item["product_id"] = int(search_result["id"])
+            item["product_name"] = search_result["name"]
             item["price"] = search_result["metadata"]["price"]
             item["image_url"] = search_result["metadata"].get("image", "")
             
-            # Logic check đơn vị tính (Nếu khách nói 'bao' mà DB có 'bao')
-            # Để đơn giản cho demo, ta tin tưởng đơn vị khách nói
-
-            # Tính thành tiền tạm tính (cho App hiển thị chơi)
             item["total_price"] = item["quantity"] * search_result["metadata"]["price"]
-            
             print(f"✅ Mapped: '{raw_name}' -> ID: {search_result['id']}")
         else:
+            # Khi rơi vào đây nghĩa là sản phẩm không có trong DB hoặc bị filter do sai lệch quá lớn
             item["product_id"] = None
-            item["note"] = "Chưa tìm thấy mã sản phẩm này"
-            print(f"❌ Not found: '{raw_name}'")
+            item["price"] = 0
+            item["total_price"] = 0
+            item["note"] = "Không tìm thấy sản phẩm này trong kho VLXD"
+            print(f"❌ Not found/Ignored: '{raw_name}'")
             
         enriched_items.append(item)
 

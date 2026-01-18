@@ -1,12 +1,12 @@
 import google.generativeai as genai
-import os
 import json
+import os
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def extract_order_info(text: str):
     """
-    Dùng Gemini 1.5 Flash để trích xuất JSON từ văn bản.
+    Trích xuất thông tin đơn hàng từ giọng nói.
     """
     try:
         # Cấu hình để Gemini BẮT BUỘC trả về JSON
@@ -19,32 +19,37 @@ def extract_order_info(text: str):
             "gemini-flash-latest", 
             generation_config=generation_config
         )
-
+    
         prompt = f"""
-        Bạn là AI bán hàng VLXD. Hãy phân tích câu nói sau thành JSON đơn hàng:
-        "{text}"
+        Bạn là trợ lý bán hàng chuyên về Vật liệu xây dựng (VLXD). 
+        Nhiệm vụ: Trích xuất thông tin đơn hàng từ câu nói: "{text}"
+
+        Lưu ý QUAN TRỌNG:
+        1. Chỉ trích xuất các sản phẩm thuộc nhóm: Xi măng, Cát, Đá, Gạch, Sắt, Thép, Tôn, Sơn, Ống nước.
+        2. Nếu khách hàng mua đồ ăn (bánh mì, cơm...), quần áo, hoặc thứ không liên quan đến xây dựng:
+           -> Hãy BỎ QUA sản phẩm đó (không đưa vào danh sách items).
+           -> Nếu cả câu nói không có sản phẩm VLXD nào, hãy trả về danh sách "items" rỗng.
 
         Yêu cầu Output JSON schema:
         {{
             "intent": "create_order",
-            "customer_name": "string (Tên khách hoặc 'Khách lẻ')",
-            "is_debt": bool (true nếu có từ khóa 'nợ'),
+            "customer_name": "Tên khách hàng hoặc null",
+            "customer_phone": "Số điện thoại hoặc null",
+            "payment_method": "Cash (Tiền mặt) hoặc Debt (Ghi nợ/Nợ). Mặc định Cash",
             "items": [
                 {{
-                    "product_name": "string",
+                    "product_name": "Tên sản phẩm",
                     "quantity": int,
-                    "unit": "string"
+                    "unit": "Đơn vị tính (bao/kg/khối...)"
                 }}
             ]
         }}
         """
-
-        response = model.generate_content(prompt)
         
-        # Vì đã set response_mime_type="application/json", ta parse thẳng luôn
-        return json.loads(response.text)
+        response = model.generate_content(prompt)
+        return json.loads(response.text.replace("```json", "").replace("```", "").strip())
 
     except Exception as e:
+        print(f"NLP Error: {e}")
         print(f"============== LỖI GEMINI NLP ==============")
-        print(e)
-        return None
+        return {"intent": "error", "items": []}

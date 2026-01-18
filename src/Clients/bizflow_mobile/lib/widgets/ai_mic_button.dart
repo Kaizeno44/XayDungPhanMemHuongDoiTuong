@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
-import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 
-import '../cart_provider.dart';
-import '../models.dart';
+import 'ai_draft_dialog.dart'; // <--- Import Dialog mới
 
 class AiMicButton extends StatefulWidget {
   const AiMicButton({super.key});
@@ -36,39 +35,43 @@ class _AiMicButtonState extends State<AiMicButton> {
       final dir = await getTemporaryDirectory();
       _path = '${dir.path}/voice_order.m4a';
 
+      // Start recording
       await _audioRecorder.start(const RecordConfig(), path: _path!);
 
       setState(() => _isRecording = true);
       debugPrint("🎙 Đang ghi âm...");
     } catch (e) {
       debugPrint("Lỗi ghi âm: $e");
+      _showError("Không thể ghi âm: $e");
     }
   }
 
   Future<void> _stopAndSend() async {
     if (!_isRecording) return;
 
-    final path = await _audioRecorder.stop();
-    setState(() {
-      _isRecording = false;
-      _isProcessing = true;
-    });
+    try {
+      final path = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+        _isProcessing = true;
+      });
 
-    if (path != null) {
-      debugPrint("⏹ File ghi âm tại: $path");
-      await _sendToAiService(path);
-    }
-
-    if (mounted) {
-      setState(() => _isProcessing = false);
+      if (path != null) {
+        debugPrint("⏹ File ghi âm tại: $path");
+        await _sendToAiService(path);
+      }
+    } catch (e) {
+      _showError("Lỗi khi dừng ghi âm: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
     }
   }
 
   Future<void> _sendToAiService(String filePath) async {
     try {
-      // ⚠️ LƯU Ý IP:
-      // - Máy ảo Android: 10.0.2.2
-      // - Máy thật: Dùng IP LAN của máy tính chạy Server AI
+      // ⚠️ Cấu hình IP Host
       var uri = Uri.parse('http://10.0.2.2:5005/api/ai/analyze-voice');
 
       var request = http.MultipartRequest('POST', uri);
@@ -79,72 +82,53 @@ class _AiMicButtonState extends State<AiMicButton> {
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
+        // Decode UTF8 để không lỗi font tiếng Việt
         final decoded = json.decode(utf8.decode(response.bodyBytes));
         debugPrint("✅ AI Trả về: $decoded");
 
         if (decoded['success'] == true) {
-          _processAiResult(decoded['data']);
+          // [SỬA ĐỔI QUAN TRỌNG] -> Hiện Dialog thay vì auto add
+          _showDraftDialog(decoded['data']);
+        } else {
+          // Hiện thông báo lỗi logic từ server (VD: Không nghe rõ)
+          _showError(decoded['message'] ?? "AI không hiểu yêu cầu.");
         }
       } else {
         debugPrint("❌ Lỗi Server: ${response.statusCode}");
-        _showError("Lỗi Server: ${response.statusCode}");
+        _showError("Lỗi Server AI (${response.statusCode}). Vui lòng thử lại.");
       }
     } catch (e) {
       debugPrint("❌ Lỗi kết nối AI: $e");
-      _showError("Lỗi kết nối: $e");
+      _showError("Không kết nối được tới AI Service. Kiểm tra mạng/IP.");
     }
   }
 
-  void _processAiResult(Map<String, dynamic> data) {
-    final cart = Provider.of<CartProvider>(context, listen: false);
-    final items = data['items'] as List;
-
-    int successCount = 0;
-
-    for (var item in items) {
-      if (item['product_id'] != null) {
-        // Parse số an toàn
-        final num priceNum = item['price'] ?? 0;
-        final num qtyNum = item['quantity'] ?? 1;
-
-        final cartItem = CartItem(
-          productId: item['product_id'],
-          productName: item['official_name'] ?? item['product_name'],
-          unitId: 1, // Mặc định đơn vị cơ bản
-          unitName: item['unit'] ?? 'Cái',
-          price: priceNum.toDouble(),
-          quantity: qtyNum.toInt(),
-          // 👇 SỬA LỖI TẠI ĐÂY: Truyền maxStock giả định
-          maxStock:
-              9999, // Vì AI chưa trả về tồn kho, ta cho phép thêm thoải mái
-        );
-
-        // Gọi hàm thêm vào giỏ (có thể nhận về thông báo lỗi nhưng với maxStock=9999 thì sẽ qua)
-        cart.addToCart(cartItem);
-        successCount++;
-      }
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            successCount > 0
-                ? "🤖 Đã thêm $successCount sản phẩm!"
-                : "🤖 Không tìm thấy sản phẩm.",
-          ),
-          backgroundColor: successCount > 0 ? Colors.green : Colors.orange,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+  void _showDraftDialog(Map<String, dynamic> data) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Bắt buộc user phải chọn Hủy hoặc Xác nhận
+      builder: (context) => AiDraftDialog(data: data),
+    );
   }
 
   void _showError(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text(msg)),
+            ],
+          ),
+          backgroundColor: Colors.red[700],
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -153,13 +137,24 @@ class _AiMicButtonState extends State<AiMicButton> {
     return GestureDetector(
       onLongPress: _startRecording,
       onLongPressUp: _stopAndSend,
+      // Thêm onTap để hướng dẫn người dùng nếu họ bấm nhầm (không giữ)
+      onTap: () {
+        if (!_isProcessing) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("🎙 Giữ lì nút để nói, thả ra để gửi."),
+              duration: Duration(milliseconds: 1000),
+            ),
+          );
+        }
+      },
       child: Container(
         width: 70,
         height: 70,
         decoration: BoxDecoration(
           color: _isRecording
               ? Colors.red
-              : (_isProcessing ? Colors.grey : Colors.blue[800]),
+              : (_isProcessing ? Colors.blue[900] : Colors.blue[800]),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
@@ -170,12 +165,9 @@ class _AiMicButtonState extends State<AiMicButton> {
           ],
         ),
         child: _isProcessing
-            ? const Padding(
-                padding: EdgeInsets.all(18.0),
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 3,
-                ),
+            ? const SpinKitWave(
+                color: Colors.white,
+                size: 30.0,
               )
             : Icon(
                 _isRecording ? Icons.mic : Icons.mic_none,

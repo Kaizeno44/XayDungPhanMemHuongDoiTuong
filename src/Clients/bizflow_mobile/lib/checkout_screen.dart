@@ -230,7 +230,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                           ),
                           isExpanded: true,
-                          value: selectedCustomerId,
+                          initialValue: selectedCustomerId,
                           hint: const Text("Khách lẻ"),
                           items: customers
                               .map(

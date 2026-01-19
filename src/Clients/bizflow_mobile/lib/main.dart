@@ -3,12 +3,13 @@ import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-// --- SERVICE IMPORTS ---
-import 'cart_provider.dart';
+// --- SERVICE & CORE IMPORTS ---
+import 'core/service_locator.dart'; // 👈 [QUAN TRỌNG] Thêm dòng này để fix lỗi
 import 'services/fcm_service.dart';
 
 // --- PROVIDER IMPORTS ---
 import 'providers/auth_provider.dart';
+import 'cart_provider.dart'; // Đảm bảo import đúng đường dẫn file CartProvider của bạn
 
 // --- SCREEN IMPORTS ---
 import 'screens/login_screen.dart';
@@ -26,10 +27,18 @@ Future<void> main() async {
     print("❌ Lỗi khởi tạo Firebase: $e");
   }
 
-  // 2. Khởi tạo FCM
-  FCMService().initialize();
+  // 2. Khởi tạo ServiceLocator (Dependency Injection)
+  // 👇 DÒNG NÀY SẼ SỬA LỖI "LateInitializationError: Field productRepo..."
+  ServiceLocator.setup();
 
-  // 3. Khởi tạo Hive
+  // 3. Khởi tạo FCM
+  try {
+    FCMService().initialize();
+  } catch (e) {
+    print("⚠️ Lỗi khởi tạo FCM: $e");
+  }
+
+  // 4. Khởi tạo Hive
   await Hive.initFlutter();
   await Hive.openBox('productCache');
 
@@ -65,8 +74,7 @@ class MyApp extends StatelessWidget {
       // Logic điều hướng chính
       home: Consumer<AuthProvider>(
         builder: (context, auth, child) {
-          // 🔥 [MỚI] Màn hình chờ: Nếu chưa kiểm tra Hive xong -> Hiện loading
-          // Giúp tránh việc nháy màn hình Login khi vừa mở app
+          // 🔥 Màn hình chờ: Nếu chưa kiểm tra Hive xong -> Hiện loading
           if (!auth.isAuthCheckComplete) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
@@ -79,7 +87,6 @@ class MyApp extends StatelessWidget {
           }
 
           // --- 2. ĐÃ ĐĂNG NHẬP -> PHÂN QUYỀN ---
-
           final rawRole = auth.role;
           print("🔍 DEBUG ROLE: '$rawRole'");
 

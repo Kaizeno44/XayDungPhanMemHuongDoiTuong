@@ -1,6 +1,13 @@
-// lib/models.dart
+import 'package:json_annotation/json_annotation.dart';
+
+// 1. Export file Product mới tạo để các màn hình khác tìm thấy ProductUnit, Product
+export 'models/product.dart';
+// export 'models/dashboard_stats.dart'; // Bỏ comment nếu bạn đã tạo file này
+
+part 'models.g.dart';
 
 // ================= CART ITEM =================
+@JsonSerializable()
 class CartItem {
   final int productId;
   final String productName;
@@ -8,7 +15,7 @@ class CartItem {
   final String unitName;
   final double price;
   int quantity;
-  final double maxStock; // 👈 MỚI: Lưu trữ tồn kho tối đa
+  final double maxStock;
 
   CartItem({
     required this.productId,
@@ -17,22 +24,31 @@ class CartItem {
     required this.unitName,
     required this.price,
     this.quantity = 1,
-    required this.maxStock, // 👈 Bắt buộc truyền vào
+    required this.maxStock,
   });
 
   double get total => price * quantity;
 
-  Map<String, dynamic> toJson() {
-    return {"productId": productId, "unitId": unitId, "quantity": quantity};
-  }
+  factory CartItem.fromJson(Map<String, dynamic> json) =>
+      _$CartItemFromJson(json);
+  Map<String, dynamic> toJson() => _$CartItemToJson(this);
 }
 
 // ================= CUSTOMER =================
+@JsonSerializable()
 class Customer {
-  String id;
+  final String id;
+
+  @JsonKey(readValue: _readName)
   final String name;
+
+  @JsonKey(name: 'phoneNumber', defaultValue: '')
   final String phone;
+
+  @JsonKey(defaultValue: '')
   final String address;
+
+  @JsonKey(defaultValue: 0.0)
   double currentDebt;
 
   Customer({
@@ -43,118 +59,17 @@ class Customer {
     this.currentDebt = 0.0,
   });
 
-  factory Customer.fromJson(Map<String, dynamic> json) {
-    return Customer(
-      id: json['id']?.toString() ?? '',
-      name: json['fullName'] ?? json['name'] ?? 'Khách lẻ',
-      phone: json['phoneNumber'] ?? '',
-      address: json['address'] ?? '',
-      currentDebt: (json['currentDebt'] as num?)?.toDouble() ?? 0.0,
-    );
+  static Object? _readName(Map map, String key) {
+    return map['fullName'] ?? map['name'] ?? 'Khách lẻ';
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'fullName': name,
-      'phoneNumber': phone,
-      'address': address,
-      'currentDebt': 0,
-    };
-  }
-}
-
-// ================= PRODUCT =================
-class Product {
-  final int id;
-  final String name;
-  final String? description;
-  final String? imageUrl;
-  final List<ProductUnit> productUnits;
-  double inventoryQuantity;
-
-  Product({
-    required this.id,
-    required this.name,
-    this.description,
-    this.imageUrl,
-    required this.productUnits,
-    this.inventoryQuantity = 0.0,
-  });
-
-  factory Product.fromJson(Map<String, dynamic> json) {
-    var unitsJson = json['productUnits'] as List? ?? [];
-    List<ProductUnit> units = unitsJson
-        .map((e) => ProductUnit.fromJson(e))
-        .toList();
-
-    return Product(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      description: json['description'],
-      imageUrl: json['imageUrl'],
-      productUnits: units,
-      inventoryQuantity:
-          (json['inventory']?['quantity'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
-
-  Product copyWith({
-    int? id,
-    String? name,
-    String? description,
-    String? imageUrl,
-    List<ProductUnit>? productUnits,
-    double? inventoryQuantity,
-  }) {
-    return Product(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      imageUrl: imageUrl ?? this.imageUrl,
-      productUnits: productUnits ?? this.productUnits,
-      inventoryQuantity: inventoryQuantity ?? this.inventoryQuantity,
-    );
-  }
-
-  ProductUnit? get _defaultUnit {
-    if (productUnits.isEmpty) return null;
-    return productUnits.firstWhere(
-      (u) => u.isBaseUnit,
-      orElse: () => productUnits.first,
-    );
-  }
-
-  double get basePrice => _defaultUnit?.price ?? 0.0;
-  int get unitId => _defaultUnit?.id ?? 0;
-  String get unitName => _defaultUnit?.unitName ?? '';
-  double get price => basePrice;
-}
-
-// ================= PRODUCT UNIT =================
-class ProductUnit {
-  final int id;
-  final String unitName;
-  final double price;
-  final bool isBaseUnit;
-
-  ProductUnit({
-    required this.id,
-    required this.unitName,
-    required this.price,
-    required this.isBaseUnit,
-  });
-
-  factory ProductUnit.fromJson(Map<String, dynamic> json) {
-    return ProductUnit(
-      id: json['id'] ?? 0,
-      unitName: json['unitName'] ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
-      isBaseUnit: json['isBaseUnit'] ?? false,
-    );
-  }
+  factory Customer.fromJson(Map<String, dynamic> json) =>
+      _$CustomerFromJson(json);
+  Map<String, dynamic> toJson() => _$CustomerToJson(this);
 }
 
 // ================= HELPER CLASSES =================
+@JsonSerializable()
 class ProductPriceResult {
   final int productId;
   final int unitId;
@@ -166,19 +81,19 @@ class ProductPriceResult {
     required this.price,
   });
 
-  factory ProductPriceResult.fromJson(Map<String, dynamic> json) {
-    return ProductPriceResult(
-      productId: json['productId'] ?? 0,
-      unitId: json['unitId'] ?? 0,
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
+  factory ProductPriceResult.fromJson(Map<String, dynamic> json) =>
+      _$ProductPriceResultFromJson(json);
 }
 
+@JsonSerializable()
 class SimpleCheckStockResult {
   final int productId;
   final int unitId;
+
+  @JsonKey(readValue: _readIsAvailable)
   final bool isAvailable;
+
+  @JsonKey(defaultValue: '')
   final String message;
 
   SimpleCheckStockResult({
@@ -188,22 +103,30 @@ class SimpleCheckStockResult {
     required this.message,
   });
 
-  factory SimpleCheckStockResult.fromJson(Map<String, dynamic> json) {
-    return SimpleCheckStockResult(
-      productId: json['productId'] ?? 0,
-      unitId: json['unitId'] ?? 0,
-      isAvailable: json['isEnough'] ?? json['isAvailable'] ?? false,
-      message: json['message'] ?? '',
-    );
+  static Object? _readIsAvailable(Map map, String key) {
+    return map['isEnough'] ?? map['isAvailable'] ?? false;
   }
+
+  factory SimpleCheckStockResult.fromJson(Map<String, dynamic> json) =>
+      _$SimpleCheckStockResultFromJson(json);
 }
 
 // ================= AUTH MODELS =================
+@JsonSerializable()
 class User {
+  @JsonKey(readValue: _readCaseInsensitive)
   final String id;
+
+  @JsonKey(readValue: _readCaseInsensitive)
   final String email;
+
+  @JsonKey(readValue: _readCaseInsensitive)
   final String fullName;
+
+  @JsonKey(readValue: _readCaseInsensitive)
   final String role;
+
+  @JsonKey(readValue: _readCaseInsensitive)
   final String storeId;
 
   User({
@@ -214,27 +137,33 @@ class User {
     required this.storeId,
   });
 
-  factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      id: (json['id'] ?? json['Id'] ?? '').toString(),
-      email: (json['email'] ?? json['Email'] ?? '').toString(),
-      fullName: (json['fullName'] ?? json['FullName'] ?? '').toString(),
-      role: (json['role'] ?? json['Role'] ?? '').toString(),
-      storeId: (json['storeId'] ?? json['StoreId'] ?? '').toString(),
-    );
+  // Helper đọc key không phân biệt hoa thường (Id vs id)
+  static Object? _readCaseInsensitive(Map map, String key) {
+    // Thử key thường
+    if (map.containsKey(key)) return map[key]?.toString() ?? '';
+    // Thử key viết hoa chữ cái đầu
+    String capitalized = key[0].toUpperCase() + key.substring(1);
+    return map[capitalized]?.toString() ?? '';
   }
+
+  factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
+  Map<String, dynamic> toJson() => _$UserToJson(this);
 }
 
+@JsonSerializable()
 class AuthResponse {
+  @JsonKey(readValue: _readToken)
   final String token;
+
+  @JsonKey(readValue: _readUser)
   final User user;
 
   AuthResponse({required this.token, required this.user});
 
-  factory AuthResponse.fromJson(Map<String, dynamic> json) {
-    return AuthResponse(
-      token: json['token'] ?? json['Token'] ?? '',
-      user: User.fromJson(json['user'] ?? json['User'] ?? {}),
-    );
-  }
+  static Object? _readToken(Map m, String k) => m['token'] ?? m['Token'] ?? '';
+  static Object? _readUser(Map m, String k) => m['user'] ?? m['User'] ?? {};
+
+  factory AuthResponse.fromJson(Map<String, dynamic> json) =>
+      _$AuthResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$AuthResponseToJson(this);
 }

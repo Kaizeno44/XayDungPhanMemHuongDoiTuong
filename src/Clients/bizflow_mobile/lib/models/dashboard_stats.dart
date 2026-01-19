@@ -1,14 +1,26 @@
+import 'package:json_annotation/json_annotation.dart';
+
+// Dòng này báo cho build_runner biết tên file sinh ra sẽ là dashboard_stats.g.dart
+part 'dashboard_stats.g.dart';
+
+@JsonSerializable()
 class DailyRevenue {
   final String dayName;
   final double amount;
+
   DailyRevenue(this.dayName, this.amount);
+
+  // Kết nối với code sinh tự động
+  factory DailyRevenue.fromJson(Map<String, dynamic> json) =>
+      _$DailyRevenueFromJson(json);
+  Map<String, dynamic> toJson() => _$DailyRevenueToJson(this);
 }
 
-// Class mới cho Top sản phẩm
+@JsonSerializable()
 class TopProduct {
   final int productId;
-  final String
-  productName; // Ở Backend OrderItems đang lưu UnitName, bạn có thể chỉnh lại backend để join bảng
+  // Backend OrderItems đang lưu UnitName, nhưng map vào productName
+  final String productName;
   final double totalSold;
   final double totalRevenue;
 
@@ -18,14 +30,19 @@ class TopProduct {
     this.totalSold,
     this.totalRevenue,
   );
+
+  factory TopProduct.fromJson(Map<String, dynamic> json) =>
+      _$TopProductFromJson(json);
+  Map<String, dynamic> toJson() => _$TopProductToJson(this);
 }
 
+@JsonSerializable()
 class DashboardStats {
   final double todayRevenue;
-  final int todayOrders; // Mới
+  final int todayOrders;
   final double totalDebt;
   final List<DailyRevenue> weeklyRevenue;
-  final List<TopProduct> topProducts; // Mới
+  final List<TopProduct> topProducts;
 
   DashboardStats({
     required this.todayRevenue,
@@ -34,4 +51,8 @@ class DashboardStats {
     required this.weeklyRevenue,
     required this.topProducts,
   });
+
+  factory DashboardStats.fromJson(Map<String, dynamic> json) =>
+      _$DashboardStatsFromJson(json);
+  Map<String, dynamic> toJson() => _$DashboardStatsToJson(this);
 }

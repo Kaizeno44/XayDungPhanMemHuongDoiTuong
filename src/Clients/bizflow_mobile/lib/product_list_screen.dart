@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
-import 'dart:async'; // Import thêm để dùng Timer cho Search
+import 'dart:async';
 import 'package:signalr_core/signalr_core.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -12,10 +12,10 @@ import 'cart_screen.dart';
 import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/stock_import_history_screen.dart';
-import 'product_service.dart';
 import 'core/config/api_config.dart';
 import 'product_detail_screen.dart';
 import 'widgets/ai_mic_button.dart';
+import 'core/service_locator.dart'; // Import ServiceLocator
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
@@ -25,9 +25,10 @@ class ProductListScreen extends StatefulWidget {
 }
 
 class _ProductListScreenState extends State<ProductListScreen> {
-  final ProductService _productService = ProductService();
+  // [ĐÃ SỬA] Đã xóa dòng: final ProductService _productService = ProductService();
+
   final TextEditingController _searchController = TextEditingController();
-  Timer? _debounce; // Timer để trì hoãn tìm kiếm tránh spam API
+  Timer? _debounce;
 
   List<Product> products = [];
   bool isLoading = true;
@@ -91,7 +92,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
     }
   }
 
-  // --- 2. DATA FETCHING ---
+  // --- 2. DATA FETCHING (QUAN TRỌNG NHẤT) ---
   Future<void> _fetchProducts({String keyword = ''}) async {
     if (!mounted) return;
 
@@ -101,7 +102,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
     });
 
     try {
-      final fetchedProducts = await _productService.getProducts(
+      // [ĐÃ SỬA] Gọi qua Repository thay vì Service
+      // Repository trả về List<Product> chuẩn, khớp với biến 'products'
+      final fetchedProducts = await ServiceLocator.productRepo.getProducts(
         keyword: keyword,
       );
 
@@ -149,11 +152,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
     };
   }
 
-  // --- 4. APP BAR (NÂNG CẤP) ---
+  // --- 4. APP BAR ---
   AppBar _buildAppBar(BuildContext context) {
-    // 👇 LOGIC QUAN TRỌNG: Kiểm tra xem màn hình này có thể quay lại được không
-    // - Nếu vào từ Dashboard -> canPop = true -> Hiện nút Back
-    // - Nếu vào từ Login (Nhân viên) -> canPop = false -> Hiện nút Logout
     final bool canPop = Navigator.canPop(context);
 
     return AppBar(
@@ -161,8 +161,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
       centerTitle: true,
       backgroundColor: Colors.blue[800],
       foregroundColor: Colors.white,
-
-      // ✅ Nút bên trái: Tự động đổi icon tùy hoàn cảnh
       leading: canPop
           ? IconButton(
               icon: const Icon(Icons.arrow_back),
@@ -178,19 +176,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   listen: false,
                 ).logout();
                 if (mounted) {
-                  // ignore: use_build_context_synchronously
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                   );
                 }
               },
             ),
-
       actions: [
-        // Nút Lịch sử nhập kho (Chỉ hiện cho Owner)
         Consumer<AuthProvider>(
           builder: (context, auth, child) {
-            // Chuẩn hóa role để so sánh chính xác
             final role = (auth.currentUser?.role ?? '').toLowerCase();
             if (role != 'owner' && role != 'admin') return const SizedBox();
 
@@ -264,7 +258,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
       appBar: _buildAppBar(context),
       body: Column(
         children: [
-          // Thanh tìm kiếm
           Container(
             padding: const EdgeInsets.all(12),
             color: Colors.white,
@@ -293,8 +286,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
               ),
             ),
           ),
-
-          // Danh sách sản phẩm
           Expanded(
             child: Container(
               color: Colors.grey[100],
@@ -313,9 +304,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildBody() {
-    if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (isLoading) return const Center(child: CircularProgressIndicator());
 
     if (errorMessage != null) {
       return Center(
@@ -357,9 +346,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
     return ListView.builder(
       itemCount: products.length,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemBuilder: (context, index) {
-        return _buildProductCard(products[index]);
-      },
+      itemBuilder: (context, index) => _buildProductCard(products[index]),
     );
   }
 
@@ -387,13 +374,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 1. Hình ảnh
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
                   width: 60,
                   height: 60,
-                  // ignore: deprecated_member_use
                   color: (uiProps['color'] as Color).withOpacity(0.1),
                   child:
                       product.imageUrl != null && product.imageUrl!.isNotEmpty
@@ -411,8 +396,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-
-              // 2. Thông tin
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,8 +448,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   ],
                 ),
               ),
-
-              // 3. Nút thêm
               IconButton(
                 style: IconButton.styleFrom(
                   backgroundColor: isOutOfStock

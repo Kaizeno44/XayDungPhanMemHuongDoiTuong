@@ -18,8 +18,7 @@ class ApiConfig {
   // --- Nhóm Product ---
   static const String products = "$productBaseUrl/api/Products";
   static const String stockImports = "$productBaseUrl/api/StockImports";
-  static const String productHub =
-      "$productBaseUrl/hubs/products"; // URL cho Product SignalR Hub
+  static const String productHub = "$productBaseUrl/hubs/products";
 
   // --- Nhóm Order & Customer ---
   static const String customers = "$orderBaseUrl/api/Customers";

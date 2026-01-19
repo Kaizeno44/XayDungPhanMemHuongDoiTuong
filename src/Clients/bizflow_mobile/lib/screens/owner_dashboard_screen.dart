@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:provider/provider.dart';
 
 import '../services/report_service.dart';
 import '../models/dashboard_stats.dart';
 import '../product_list_screen.dart';
-import '../providers/auth_provider.dart';
-import 'stock_import_screen.dart'; // ✅ Import màn hình nhập kho
 
 class OwnerDashboardScreen extends StatefulWidget {
   const OwnerDashboardScreen({super.key});
@@ -33,30 +30,18 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     });
   }
 
-  // Điều hướng sang BÁN HÀNG
   void _navigateToPos() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ProductListScreen()),
     );
-    // Khi quay lại thì reload data để cập nhật doanh thu
-    if (mounted) _loadData();
-  }
-
-  // Điều hướng sang NHẬP KHO
-  void _navigateToImport() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const StockImportScreen()),
-    );
-    // Khi quay lại thì reload data (nếu có hiển thị chi phí nhập)
     if (mounted) _loadData();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.grey[50], // Màu nền sáng sủa hơn
       appBar: AppBar(
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,68 +63,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
         centerTitle: false,
         backgroundColor: Colors.white,
         elevation: 0,
-
-        // NÚT ĐĂNG XUẤT (Góc trái)
-        leading: IconButton(
-          icon: const Icon(Icons.logout, color: Colors.red),
-          tooltip: 'Đăng xuất',
-          onPressed: () async {
-            final confirm = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text("Đăng xuất?"),
-                content: const Text("Bạn có chắc muốn thoát tài khoản không?"),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text("Hủy"),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text(
-                      "Đồng ý",
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
-                ],
-              ),
-            );
-
-            if (confirm == true && mounted) {
-              await Provider.of<AuthProvider>(context, listen: false).logout();
-            }
-          },
-        ),
-
         actions: [
-          // 🔥 [MỚI] NÚT NHẬP KHO (Màu Cam)
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 10),
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton.icon(
-              onPressed: _navigateToImport,
-              icon: const Icon(
-                Icons.download,
-                size: 20,
-                color: Colors.deepOrange,
-              ),
-              label: const Text(
-                "Nhập kho",
-                style: TextStyle(
-                  color: Colors.deepOrange,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.deepOrange.withOpacity(0.1),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
-          ),
-
-          // 🛍️ NÚT BÁN HÀNG (Màu Xanh)
           Container(
             margin: const EdgeInsets.only(right: 12),
             child: CircleAvatar(
@@ -161,17 +85,9 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 40),
-                  const SizedBox(height: 8),
-                  const Text("Không tải được dữ liệu"),
-                  TextButton(
-                    onPressed: _loadData,
-                    child: const Text("Thử lại"),
-                  ),
-                ],
+              child: TextButton(
+                onPressed: _loadData,
+                child: const Text("Tải lại"),
               ),
             );
           }
@@ -186,7 +102,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. CÁC THẺ KPI
+                  // 1. CÁC THẺ KPI (Gradient đẹp)
                   _buildKpiSection(stats),
 
                   const SizedBox(height: 24),
@@ -205,6 +121,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
+                          // ignore: deprecated_member_use
                           color: Colors.blue.withOpacity(0.05),
                           blurRadius: 15,
                           offset: const Offset(0, 5),
@@ -216,7 +133,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
 
                   const SizedBox(height: 24),
 
-                  // 3. DANH SÁCH TOP SẢN PHẨM
+                  // 3. DANH SÁCH TOP SẢN PHẨM (Mới)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -267,14 +184,17 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
                 value: currencyFormat.format(stats.totalDebt),
                 icon: Icons.account_balance_wallet,
                 color: Colors.orange,
-                isWarning: stats.totalDebt > 10000000,
+                isWarning:
+                    stats.totalDebt > 10000000, // Cảnh báo đỏ nếu nợ > 10tr
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _buildInfoCard(
                 title: "Lợi nhuận (Ước)",
-                value: currencyFormat.format(stats.todayRevenue * 0.2),
+                value: currencyFormat.format(
+                  stats.todayRevenue * 0.2,
+                ), // Giả sử lãi 20%
                 icon: Icons.trending_up,
                 color: Colors.green,
                 isWarning: false,
@@ -305,6 +225,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
+            // ignore: deprecated_member_use
             color: colors[0].withOpacity(0.3),
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -365,6 +286,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
         border: isWarning ? Border.all(color: Colors.red.shade200) : null,
         boxShadow: [
           BoxShadow(
+            // ignore: deprecated_member_use
             color: Colors.grey.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),

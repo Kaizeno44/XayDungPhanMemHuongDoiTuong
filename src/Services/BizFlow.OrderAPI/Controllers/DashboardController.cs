@@ -20,63 +20,51 @@ namespace BizFlow.OrderAPI.Controllers
         {
             try
             {
-                var today = DateTime.UtcNow.Date;
+                // 1. Xác định thời gian
+                var today = DateTime.UtcNow.Date; // Lấy ngày hiện tại (theo giờ server)
                 var sevenDaysAgo = today.AddDays(-6);
 
-                // 1. Doanh thu hôm nay
+                // 2. Tính Doanh thu hôm nay
+                // (Chỉ lấy đơn hàng đã hoàn thành hoặc thành công, tùy logic của bạn)
                 var todayRevenue = await _context.Orders
-                    .Where(o => o.OrderDate.Date == today)
+                    .Where(o => o.OrderDate.Date == today) 
                     .SumAsync(o => o.TotalAmount);
 
-                // 2. Tổng nợ
+                // 3. Tính Tổng nợ khách hàng
+                // Lấy tổng cột CurrentDebt trong bảng Customers
                 var totalDebt = await _context.Customers
                     .SumAsync(c => c.CurrentDebt);
-                
-                // 3. Tổng số đơn hôm nay (Mới)
-                var todayOrdersCount = await _context.Orders
-                    .Where(o => o.OrderDate.Date == today)
-                    .CountAsync();
 
-                // 4. Biểu đồ 7 ngày
+                // 4. Chuẩn bị dữ liệu biểu đồ 7 ngày
                 var weeklyDataRaw = await _context.Orders
                     .Where(o => o.OrderDate.Date >= sevenDaysAgo && o.OrderDate.Date <= today)
                     .GroupBy(o => o.OrderDate.Date)
-                    .Select(g => new { Date = g.Key, Revenue = g.Sum(o => o.TotalAmount) })
+                    .Select(g => new
+                    {
+                        Date = g.Key,
+                        Revenue = g.Sum(o => o.TotalAmount)
+                    })
                     .ToListAsync();
 
+                // Chuẩn hóa dữ liệu (Điền số 0 cho những ngày không bán được gì)
                 var weeklyChartData = Enumerable.Range(0, 7)
                     .Select(offset =>
                     {
                         var date = sevenDaysAgo.AddDays(offset);
                         var record = weeklyDataRaw.FirstOrDefault(x => x.Date == date);
-                        return new { DayName = GetVietnameseDayName(date.DayOfWeek), Amount = record?.Revenue ?? 0 };
-                    }).ToList();
-
-                // 5. 🔥 TOP 5 SẢN PHẨM BÁN CHẠY (MỚI)
-                // Lưu ý: Logic này join OrderItems để tính tổng số lượng bán ra
-                var topProducts = await _context.OrderItems
-                    .GroupBy(x => new { x.ProductId, x.UnitName }) // Group theo ID (Tên sản phẩm cần join bảng Product nếu muốn chính xác tên, ở đây giả sử lưu tên trong OrderItems)
-                    .Select(g => new
-                    {
-                        ProductId = g.Key.ProductId,
-                        ProductName = g.Max(x => x.UnitName), // Lấy tạm UnitName hoặc cần Join bảng Products để lấy Name
-                        TotalSold = g.Sum(x => x.Quantity),
-                        TotalRevenue = g.Sum(x => x.Total)
+                        return new
+                        {
+                            DayName = GetVietnameseDayName(date.DayOfWeek), // Hàm chuyển T2, T3...
+                            Amount = record?.Revenue ?? 0
+                        };
                     })
-                    .OrderByDescending(x => x.TotalSold)
-                    .Take(5)
-                    .ToListAsync();
-
-                // Để lấy tên sản phẩm đẹp hơn, ta cần lấy danh sách ProductId rồi query bảng Products (giả sử bảng Products nằm chung DB hoặc gọi qua Service).
-                // Ở đây để đơn giản cho Microservices, tôi sẽ trả về danh sách TopItems dựa trên OrderItems đã lưu.
+                    .ToList();
 
                 return Ok(new
                 {
                     TodayRevenue = todayRevenue,
-                    TodayOrders = todayOrdersCount, // Thêm số đơn
                     TotalDebt = totalDebt,
-                    WeeklyRevenue = weeklyChartData,
-                    TopProducts = topProducts // Trả về Top 5
+                    WeeklyRevenue = weeklyChartData
                 });
             }
             catch (Exception ex)
@@ -85,10 +73,20 @@ namespace BizFlow.OrderAPI.Controllers
             }
         }
 
-        private static string GetVietnameseDayName(DayOfWeek day) => day switch
+        // Hàm phụ để đổi tên thứ sang tiếng Việt cho thân thiện
+        private static string GetVietnameseDayName(DayOfWeek day)
         {
-            DayOfWeek.Monday => "T2", DayOfWeek.Tuesday => "T3", DayOfWeek.Wednesday => "T4",
-            DayOfWeek.Thursday => "T5", DayOfWeek.Friday => "T6", DayOfWeek.Saturday => "T7", DayOfWeek.Sunday => "CN", _ => ""
-        };
+            return day switch
+            {
+                DayOfWeek.Monday => "T2",
+                DayOfWeek.Tuesday => "T3",
+                DayOfWeek.Wednesday => "T4",
+                DayOfWeek.Thursday => "T5",
+                DayOfWeek.Friday => "T6",
+                DayOfWeek.Saturday => "T7",
+                DayOfWeek.Sunday => "CN",
+                _ => ""
+            };
+        }
     }
 }

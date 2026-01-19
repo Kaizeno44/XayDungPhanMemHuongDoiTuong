@@ -93,8 +93,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Vui lòng nhập email';
+                    }
                     if (!value.contains('@')) return 'Email không hợp lệ';
                     return null;
                   },
@@ -121,10 +122,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Vui lòng nhập mật khẩu';
-                    if (value.length < 6)
+                    }
+                    if (value.length < 6) {
                       return 'Mật khẩu phải ít nhất 6 ký tự';
+                    }
                     return null;
                   },
                 ),

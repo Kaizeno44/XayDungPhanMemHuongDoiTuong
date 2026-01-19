@@ -178,6 +178,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   listen: false,
                 ).logout();
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                   );
@@ -392,6 +393,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 child: Container(
                   width: 60,
                   height: 60,
+                  // ignore: deprecated_member_use
                   color: (uiProps['color'] as Color).withOpacity(0.1),
                   child:
                       product.imageUrl != null && product.imageUrl!.isNotEmpty

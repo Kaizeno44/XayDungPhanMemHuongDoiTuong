@@ -2,13 +2,12 @@ import 'package:chopper/chopper.dart';
 
 part 'product_service.chopper.dart';
 
-// 1. Đổi BaseUrl thành '/api' để dùng chung cho Products và Stock
 @ChopperApi(baseUrl: '/api')
 abstract class ProductService extends ChopperService {
   static ProductService create([ChopperClient? client]) =>
       _$ProductService(client);
 
-  // 2. Cập nhật API Get Products (thêm path /Products)
+  // 1. Lấy danh sách sản phẩm
   @Get(path: '/Products')
   Future<Response<dynamic>> getProducts({
     @Query('keyword') String? keyword,
@@ -17,11 +16,15 @@ abstract class ProductService extends ChopperService {
     @Query('pageSize') int pageSize = 10,
   });
 
-  // 3. Thêm API Get Detail
+  // 2. Lấy chi tiết sản phẩm
   @Get(path: '/Products/{id}')
   Future<Response<dynamic>> getProductById(@Path('id') int id);
 
-  // 4. Thêm API Nhập kho (Endpoint: /api/Stock/import)
+  // 3. Nhập kho
   @Post(path: '/Stock/import')
   Future<Response<dynamic>> importStock(@Body() Map<String, dynamic> body);
+
+  // 4. 👇 KIỂM TRA TỒN KHO (Hàm này đang gây lỗi vì thiếu trong file chopper)
+  @Post(path: '/Products/check-stock')
+  Future<Response<dynamic>> checkStock(@Body() Map<String, dynamic> body);
 }

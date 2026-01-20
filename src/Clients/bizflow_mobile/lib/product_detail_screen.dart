@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
 import 'cart_provider.dart';
 import 'models.dart';
-import 'core/api_service.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'core/api_service.dart'; // Import ApiService mới
+import 'core/service_locator.dart';
 import 'screens/stock_import_screen.dart';
 import 'providers/auth_provider.dart';
-import 'core/service_locator.dart'; // [MỚI] Import ServiceLocator
 
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
@@ -19,8 +20,7 @@ class ProductDetailScreen extends StatefulWidget {
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
-  final ApiService _apiService = ApiService();
-  // [ĐÃ SỬA] Xóa dòng khởi tạo ProductService bị lỗi ở đây
+  // [CẢI TIẾN] Không tự khởi tạo ApiService nữa, sẽ lấy từ Provider
 
   ProductUnit? _selectedUnit;
   int _quantity = 1;
@@ -31,23 +31,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void initState() {
     super.initState();
     _currentInventory = widget.product.inventoryQuantity;
+
+    // Chọn đơn vị cơ bản mặc định
     _selectedUnit = widget.product.productUnits.firstWhere(
       (unit) => unit.isBaseUnit,
       orElse: () => widget.product.productUnits.first,
     );
-    _checkStock();
+
+    // Gọi kiểm tra tồn kho sau khi widget đã build xong để có context an toàn
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkStock();
+    });
   }
 
   Future<void> _refreshProductData() async {
     try {
-      // [ĐÃ SỬA] Gọi qua Repository thay vì Service
       final updatedProduct = await ServiceLocator.productRepo.getProductById(
         widget.product.id,
       );
 
       if (mounted) {
         setState(() {
-          _currentInventory = updatedProduct.inventoryQuantity;
+          _currentInventory = updatedProduct.inventoryQuantity!;
         });
       }
     } catch (e) {
@@ -55,25 +60,53 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  // ... (Các phần code còn lại giữ nguyên không đổi)
   Future<void> _checkStock() async {
     if (_selectedUnit == null) return;
+    if (!mounted) return;
 
     try {
-      final result = await _apiService.simpleCheckStock(
-        widget.product.id,
-        _selectedUnit!.id,
-        _quantity.toDouble(),
-      );
+      // [CẢI TIẾN] Lấy ApiService từ Provider
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // [SỬA LỖI] Gọi qua ProductService (Chopper) thay vì hàm thủ công cũ
+      final response = await apiService.productService.checkStock({
+        'requests': [
+          {
+            'productId': widget.product.id,
+            'unitId': _selectedUnit!.id,
+            'quantity': _quantity,
+          },
+        ],
+      });
+
       if (mounted) {
-        setState(() {
-          _stockMessage = result.message;
-        });
+        if (response.isSuccessful) {
+          // Parse kết quả từ API (xử lý cả trường hợp trả về List hoặc Map)
+          final dynamic body = response.body;
+          SimpleCheckStockResult result;
+
+          if (body is List && body.isNotEmpty) {
+            result = SimpleCheckStockResult.fromJson(body.first);
+          } else if (body is Map<String, dynamic>) {
+            result = SimpleCheckStockResult.fromJson(body);
+          } else {
+            throw Exception("Dữ liệu tồn kho không hợp lệ");
+          }
+
+          setState(() {
+            _stockMessage = result.message;
+          });
+        } else {
+          setState(() {
+            _stockMessage =
+                'Không thể kiểm tra tồn kho (Lỗi ${response.statusCode})';
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _stockMessage = 'Lỗi kiểm tra tồn kho: $e';
+          _stockMessage = 'Lỗi kết nối: $e';
         });
       }
     }
@@ -88,60 +121,80 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _addToCart() async {
     if (_selectedUnit == null) return;
-
-    final stockResult = await _apiService.simpleCheckStock(
-      widget.product.id,
-      _selectedUnit!.id,
-      _quantity.toDouble(),
-    );
-
     if (!mounted) return;
 
-    if (!stockResult.isAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(stockResult.message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
+    // 1. Kiểm tra tồn kho trước khi thêm
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
 
-    final cartItem = CartItem(
-      productId: widget.product.id,
-      productName: widget.product.name,
-      unitId: _selectedUnit!.id,
-      unitName: _selectedUnit!.unitName,
-      price: _selectedUnit!.price,
-      quantity: _quantity,
-      maxStock: widget.product.inventoryQuantity,
+      final response = await apiService.productService.checkStock({
+        'requests': [
+          {
+            'productId': widget.product.id,
+            'unitId': _selectedUnit!.id,
+            'quantity': _quantity,
+          },
+        ],
+      });
+
+      if (!response.isSuccessful) {
+        _showSnackBar('Lỗi khi kiểm tra tồn kho', isError: true);
+        return;
+      }
+
+      final dynamic body = response.body;
+      SimpleCheckStockResult stockResult;
+
+      if (body is List && body.isNotEmpty) {
+        stockResult = SimpleCheckStockResult.fromJson(body.first);
+      } else {
+        stockResult = SimpleCheckStockResult.fromJson(body);
+      }
+
+      if (!stockResult.isAvailable) {
+        _showSnackBar(stockResult.message, isError: true);
+        return;
+      }
+
+      // 2. Thêm vào giỏ hàng
+      final cartItem = CartItem(
+        productId: widget.product.id,
+        productName: widget.product.name,
+        unitId: _selectedUnit!.id,
+        unitName: _selectedUnit!.unitName,
+        price: _selectedUnit!.price,
+        quantity: _quantity,
+        maxStock: widget.product.inventoryQuantity,
+      );
+
+      final errorMsg = Provider.of<CartProvider>(
+        // ignore: use_build_context_synchronously
+        context,
+        listen: false,
+      ).addToCart(cartItem);
+
+      if (errorMsg == null) {
+        _showSnackBar(
+          'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
+          isError: false,
+        );
+      } else {
+        _showSnackBar(errorMsg, isError: true);
+      }
+    } catch (e) {
+      _showSnackBar('Đã xảy ra lỗi: $e', isError: true);
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
     );
-
-    final errorMsg = Provider.of<CartProvider>(
-      context,
-      listen: false,
-    ).addToCart(cartItem);
-
-    if (errorMsg == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
   }
 
   @override
@@ -190,9 +243,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+            // --- PHẦN QUẢN LÝ KHO (Chỉ hiện với Owner) ---
             Consumer<AuthProvider>(
               builder: (context, auth, child) {
-                if (auth.currentUser?.role != 'Owner') return const SizedBox();
+                // Kiểm tra null an toàn hơn cho role
+                final role = auth.currentUser?.role.toLowerCase() ?? '';
+                if (role != 'owner' && role != 'admin') return const SizedBox();
+
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   padding: const EdgeInsets.all(12),

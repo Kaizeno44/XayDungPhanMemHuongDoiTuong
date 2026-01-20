@@ -63,4 +63,17 @@ final class _$ProductService extends ProductService {
     );
     return client.send<dynamic, dynamic>($request);
   }
+
+  @override
+  Future<Response<dynamic>> checkStock(Map<String, dynamic> body) {
+    final Uri $url = Uri.parse('/api/Products/check-stock');
+    final $body = body;
+    final Request $request = Request(
+      'POST',
+      $url,
+      client.baseUrl,
+      body: $body,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
 }

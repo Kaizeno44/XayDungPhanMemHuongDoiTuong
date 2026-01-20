@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'dart:math';
 import 'dart:async';
+import 'dart:math';
 import 'package:signalr_core/signalr_core.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-import 'cart_provider.dart';
-import 'models.dart';
-import 'cart_screen.dart';
-import 'providers/auth_provider.dart';
-import 'screens/login_screen.dart';
-import 'screens/stock_import_history_screen.dart';
-import 'core/config/api_config.dart';
-import 'product_detail_screen.dart';
-import 'widgets/ai_mic_button.dart';
-import 'core/service_locator.dart'; // Import ServiceLocator
+// --- IMPORTS ---
+import 'package:bizflow_mobile/models.dart';
+import 'package:bizflow_mobile/cart_provider.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart';
+import 'package:bizflow_mobile/core/config/api_config.dart';
+import 'package:bizflow_mobile/core/result.dart';
+
+// 👇 [QUAN TRỌNG] Đã thêm dòng import này để sửa lỗi "isn't a type"
+import 'package:bizflow_mobile/repositories/product_repository.dart';
+
+// --- SCREENS ---
+import 'package:bizflow_mobile/screens/login_screen.dart';
+import 'package:bizflow_mobile/screens/stock_import_history_screen.dart';
+import 'package:bizflow_mobile/product_detail_screen.dart';
+import 'package:bizflow_mobile/cart_screen.dart';
+import 'package:bizflow_mobile/widgets/ai_mic_button.dart';
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
@@ -25,8 +31,6 @@ class ProductListScreen extends StatefulWidget {
 }
 
 class _ProductListScreenState extends State<ProductListScreen> {
-  // [ĐÃ SỬA] Đã xóa dòng: final ProductService _productService = ProductService();
-
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
 
@@ -38,7 +42,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchProducts();
+    // Gọi fetch products sau khi widget build xong để dùng context an toàn
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchProducts();
+    });
     _initSignalR();
   }
 
@@ -52,47 +59,47 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
   // --- 1. SIGNALR CONFIGURATION ---
   Future<void> _initSignalR() async {
-    _hubConnection = HubConnectionBuilder()
-        .withUrl(ApiConfig.productHub, HttpConnectionOptions())
-        .withAutomaticReconnect()
-        .build();
-
-    _hubConnection?.onclose((error) => debugPrint("Connection Closed: $error"));
-
-    _hubConnection?.on("ReceiveStockUpdate", (arguments) {
-      try {
-        if (arguments == null || arguments.length < 2) return;
-
-        final String strId = arguments[0].toString();
-        final String strQty = arguments[1].toString();
-
-        final int productId = int.parse(strId);
-        final double newQuantity = double.parse(strQty);
-
-        if (!mounted) return;
-
-        setState(() {
-          final index = products.indexWhere((p) => p.id == productId);
-          if (index != -1) {
-            products[index] = products[index].copyWith(
-              inventoryQuantity: newQuantity,
-            );
-          }
-        });
-      } catch (e) {
-        debugPrint("SignalR Error: $e");
-      }
-    });
-
     try {
+      _hubConnection = HubConnectionBuilder()
+          .withUrl(ApiConfig.productHub, HttpConnectionOptions())
+          .withAutomaticReconnect()
+          .build();
+
+      _hubConnection?.onclose(
+        (error) => debugPrint("Connection Closed: $error"),
+      );
+
+      _hubConnection?.on("ReceiveStockUpdate", (arguments) {
+        try {
+          if (arguments == null || arguments.length < 2) return;
+          final String strId = arguments[0].toString();
+          final String strQty = arguments[1].toString();
+          final int productId = int.parse(strId);
+          final double newQuantity = double.parse(strQty);
+
+          if (!mounted) return;
+
+          setState(() {
+            final index = products.indexWhere((p) => p.id == productId);
+            if (index != -1) {
+              products[index] = products[index].copyWith(
+                inventoryQuantity: newQuantity,
+              );
+            }
+          });
+        } catch (e) {
+          debugPrint("SignalR Error: $e");
+        }
+      });
+
       await _hubConnection?.start();
       debugPrint("✅ SignalR Connected!");
     } catch (e) {
-      debugPrint("Error starting SignalR: $e");
+      debugPrint("SignalR Init Error: $e");
     }
   }
 
-  // --- 2. DATA FETCHING (QUAN TRỌNG NHẤT) ---
+  // --- 2. DATA FETCHING ---
   Future<void> _fetchProducts({String keyword = ''}) async {
     if (!mounted) return;
 
@@ -102,22 +109,43 @@ class _ProductListScreenState extends State<ProductListScreen> {
     });
 
     try {
-      // [ĐÃ SỬA] Gọi qua Repository thay vì Service
-      // Repository trả về List<Product> chuẩn, khớp với biến 'products'
-      final fetchedProducts = await ServiceLocator.productRepo.getProducts(
-        keyword: keyword,
-      );
+      // Gọi Repository từ Provider
+      final repo = context.read<ProductRepository>();
+
+      final result = await repo.getProducts(keyword: keyword);
 
       if (!mounted) return;
 
-      setState(() {
-        products = fetchedProducts;
-        isLoading = false;
-      });
+      // Xử lý kết quả trả về (Result Pattern)
+      switch (result) {
+        // Trường hợp THÀNH CÔNG
+        case Success(data: final list):
+          setState(() {
+            products = list;
+            isLoading = false;
+          });
+          break;
+
+        // Trường hợp THẤT BẠI (Mất mạng, lỗi server...)
+        // 👇 [CẢI TIẾN] Đã sửa lỗi crash "UnimplementedError"
+        case Failure(message: final msg):
+          setState(() {
+            errorMessage = msg;
+            isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          break;
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        errorMessage = e.toString();
+        errorMessage = 'Lỗi ngoại lệ: $e';
         isLoading = false;
       });
     }
@@ -155,7 +183,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
   // --- 4. APP BAR ---
   AppBar _buildAppBar(BuildContext context) {
     final bool canPop = Navigator.canPop(context);
-
     return AppBar(
       title: const Text('Kho VLXD'),
       centerTitle: true,
@@ -164,12 +191,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
       leading: canPop
           ? IconButton(
               icon: const Icon(Icons.arrow_back),
-              tooltip: 'Quay lại Dashboard',
               onPressed: () => Navigator.pop(context),
             )
           : IconButton(
               icon: const Icon(Icons.logout),
-              tooltip: 'Đăng xuất',
               onPressed: () async {
                 await Provider.of<AuthProvider>(
                   context,
@@ -187,10 +212,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
           builder: (context, auth, child) {
             final role = (auth.currentUser?.role ?? '').toLowerCase();
             if (role != 'owner' && role != 'admin') return const SizedBox();
-
             return IconButton(
               icon: const Icon(Icons.history),
-              tooltip: 'Lịch sử nhập kho',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -316,6 +339,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             Text(
               "Lỗi: $errorMessage",
               style: const TextStyle(color: Colors.red),
+              textAlign: TextAlign.center, // Căn giữa text lỗi
             ),
             const SizedBox(height: 10),
             ElevatedButton(

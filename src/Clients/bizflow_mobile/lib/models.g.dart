@@ -59,6 +59,16 @@ SimpleCheckStockResult _$SimpleCheckStockResultFromJson(
   message: json['message'] as String? ?? '',
 );
 
+// ignore: unused_element
+Map<String, dynamic> _$SimpleCheckStockResultToJson(
+  SimpleCheckStockResult instance,
+) => <String, dynamic>{
+  'productId': instance.productId,
+  'unitId': instance.unitId,
+  'isAvailable': instance.isAvailable,
+  'message': instance.message,
+};
+
 User _$UserFromJson(Map<String, dynamic> json) => User(
   id: User._readCaseInsensitive(json, 'id') as String,
   email: User._readCaseInsensitive(json, 'email') as String,

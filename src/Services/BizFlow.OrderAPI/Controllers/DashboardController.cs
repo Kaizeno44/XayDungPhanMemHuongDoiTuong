@@ -24,11 +24,11 @@ namespace BizFlow.OrderAPI.Controllers
                 var today = DateTime.UtcNow.Date; // Lấy ngày hiện tại (theo giờ server)
                 var sevenDaysAgo = today.AddDays(-6);
 
-                // 2. Tính Doanh thu hôm nay
+                // 2. Tính Doanh thu hôm nay và số đơn hàng hôm nay
                 // (Chỉ lấy đơn hàng đã hoàn thành hoặc thành công, tùy logic của bạn)
-                var todayRevenue = await _context.Orders
-                    .Where(o => o.OrderDate.Date == today) 
-                    .SumAsync(o => o.TotalAmount);
+                var todayOrdersQuery = _context.Orders.Where(o => o.OrderDate.Date == today);
+                var todayRevenue = await todayOrdersQuery.SumAsync(o => o.TotalAmount);
+                var todayOrdersCount = await todayOrdersQuery.CountAsync();
 
                 // 3. Tính Tổng nợ khách hàng
                 // Lấy tổng cột CurrentDebt trong bảng Customers
@@ -60,11 +60,29 @@ namespace BizFlow.OrderAPI.Controllers
                     })
                     .ToList();
 
+                // 5. Top 5 sản phẩm bán chạy nhất tháng
+                var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
+                var topProducts = await _context.OrderItems
+                    .Include(oi => oi.Order)
+                    .Where(oi => oi.Order.OrderDate >= firstDayOfMonth)
+                    .GroupBy(oi => oi.ProductId)
+                    .Select(g => new
+                    {
+                        ProductId = g.Key,
+                        TotalQuantity = g.Sum(oi => oi.Quantity),
+                        TotalRevenue = g.Sum(oi => oi.Total)
+                    })
+                    .OrderByDescending(x => x.TotalQuantity)
+                    .Take(5)
+                    .ToListAsync();
+
                 return Ok(new
                 {
                     TodayRevenue = todayRevenue,
+                    TodayOrdersCount = todayOrdersCount,
                     TotalDebt = totalDebt,
-                    WeeklyRevenue = weeklyChartData
+                    WeeklyRevenue = weeklyChartData,
+                    TopProducts = topProducts
                 });
             }
             catch (Exception ex)

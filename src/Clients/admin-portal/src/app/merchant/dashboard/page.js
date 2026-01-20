@@ -10,7 +10,17 @@ import axios from "axios";
 
 export default function MerchantDashboard() {
   const router = useRouter();
+  
+  // 1. State cho biểu đồ (Cũ)
   const [revenueData, setRevenueData] = useState([]);
+  
+  // 2. State cho số liệu tổng quan (Mới - Của B và C)
+  const [summaryStats, setSummaryStats] = useState({
+    products: 0,
+    orders: 0,
+    debt: 15000000 // Giả định khách nợ lấy từ Accounting
+  });
+  
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,32 +30,81 @@ export default function MerchantDashboard() {
       return;
     }
 
-    const fetchRevenue = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get("http://localhost:5000/api/Accounting/revenue-stats", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setRevenueData(response.data);
+        // --- GỌI SONG SONG CÁC API ---
+        const [revenueRes, productRes, orderRes] = await Promise.allSettled([
+          // 1. API Doanh thu (Của bạn A)
+          axios.get("http://localhost:5000/api/Accounting/revenue-stats", {
+             headers: { Authorization: `Bearer ${token}` }
+          }),
+          // 2. API Sản phẩm (Của bạn B) - Nếu chưa xong thì thôi
+          axios.get("http://localhost:5000/api/products/count", {
+             headers: { Authorization: `Bearer ${token}` }
+          }),
+          // 3. API Đơn hàng (Của bạn C)
+          axios.get("http://localhost:5000/api/orders/stats/today", {
+             headers: { Authorization: `Bearer ${token}` }
+          })
+        ]);
+
+        // --- XỬ LÝ DỮ LIỆU ---
+        
+        // A. Xử lý Doanh thu
+        if (revenueRes.status === 'fulfilled') {
+          setRevenueData(revenueRes.value.data);
+        }
+
+        // B. Xử lý Số liệu tổng quan
+        setSummaryStats(prev => ({
+          ...prev,
+          // Nếu B gọi thành công thì lấy số, thất bại (do chưa code xong) thì để 0
+          products: productRes.status === 'fulfilled' ? productRes.value.data.count : 0,
+          orders: orderRes.status === 'fulfilled' ? orderRes.value.data.totalOrders : 0
+        }));
+
       } catch (err) {
-        console.error("Lỗi tải doanh thu:", err);
+        console.error("Lỗi tải dữ liệu Dashboard:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRevenue();
+    fetchData();
   }, [router]);
 
+  // Tính doanh thu hôm nay từ dữ liệu biểu đồ (Lấy ngày cuối cùng)
+  const todayRevenue = revenueData.length > 0 
+    ? revenueData[revenueData.length - 1].revenue 
+    : 0;
+
+  // Cập nhật số liệu vào UI
   const stats = [
-    { title: "Doanh thu hôm nay", value: revenueData.length > 0 ? new Intl.NumberFormat('vi-VN').format(revenueData[revenueData.length - 1].revenue) + " ₫" : "0 ₫", desc: "Cập nhật mới nhất", color: "text-green-600" },
-    { title: "Đơn hàng mới", value: "3", desc: "Đang chờ xử lý", color: "text-blue-600" },
-    { title: "Khách nợ", value: "15.000.000 ₫", desc: "Cần thu hồi gấp", color: "text-red-600" },
+    { 
+      title: "Doanh thu hôm nay", 
+      value: new Intl.NumberFormat('vi-VN').format(todayRevenue) + " ₫", 
+      desc: "Cập nhật mới nhất", 
+      color: "text-green-600" 
+    },
+    { 
+      title: "Đơn hàng mới", 
+      value: summaryStats.orders, // <-- Dữ liệu thật từ C
+      desc: "Đang chờ xử lý", 
+      color: "text-blue-600" 
+    },
+    { 
+      title: "Tổng sản phẩm", // <-- Thêm cái này cho xịn
+      value: summaryStats.products, // <-- Dữ liệu thật từ B
+      desc: "Trong kho hàng", 
+      color: "text-purple-600" 
+    },
   ];
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Xin chào, Chủ Cửa Hàng 👋</h1>
       
+      {/* KHỐI THỐNG KÊ (Đã cập nhật dữ liệu thật) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {stats.map((stat, idx) => (
           <div key={idx} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -56,6 +115,7 @@ export default function MerchantDashboard() {
         ))}
       </div>
 
+      {/* BIỂU ĐỒ DOANH THU (Giữ nguyên code cũ của bạn) */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
         <h2 className="text-lg font-bold text-gray-900 mb-6">Biểu đồ Doanh thu (7 ngày gần nhất)</h2>
         <div className="h-80 w-full">
@@ -78,6 +138,7 @@ export default function MerchantDashboard() {
         </div>
       </div>
 
+      {/* CÁC NÚT TẮT (Giữ nguyên) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <QuickActionCard 
           href="/reports"

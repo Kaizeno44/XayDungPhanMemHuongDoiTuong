@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:hive/hive.dart';
-import 'package:chopper/chopper.dart';
 
 import '../core/result.dart';
 import '../models/product.dart';

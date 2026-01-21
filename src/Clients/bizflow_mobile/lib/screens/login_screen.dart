@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // 1. Thay provider bằng flutter_riverpod
 import '../providers/auth_provider.dart';
-// import '../product_list_screen.dart'; // 👈 Không cần import file này nữa
 
-class LoginScreen extends StatefulWidget {
+// 2. Đổi thành ConsumerStatefulWidget
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -26,23 +26,17 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
     try {
-      // 1. Gọi hàm login
-      final success = await authProvider.login(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+      // 3. Dùng 'ref.read' để gọi hàm login của Riverpod Provider
+      // authNotifierProvider là cái cầu nối chúng ta đã tạo
+      final success = await ref
+          .read(authNotifierProvider)
+          .login(_emailController.text.trim(), _passwordController.text);
 
-      // 2. [QUAN TRỌNG] Chỉ cần kiểm tra success.
-      // KHÔNG ĐƯỢC gọi Navigator.push ở đây.
-      // AuthProvider sẽ báo cho main.dart biết và tự chuyển trang.
+      // 4. Nếu thành công, KHÔNG CẦN LÀM GÌ CẢ (Navigation)
+      // GoRouter đang lắng nghe authNotifierProvider, nó thấy login ok sẽ tự chuyển trang ngay lập tức.
       if (success && mounted) {
-        // Để trống hoặc log ra console
-        print(
-          "✅ Login UI: Đăng nhập thành công, chờ main.dart chuyển hướng...",
-        );
+        print("✅ Login UI: Gọi login thành công, GoRouter sẽ tự chuyển trang.");
       }
     } catch (e) {
       if (mounted) {
@@ -58,9 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (Giữ nguyên phần giao diện build bên dưới của bạn) ...
-    // ... Copy y nguyên phần build cũ vào đây ...
-    final isLoading = context.watch<AuthProvider>().isLoading;
+    // 5. Dùng 'ref.watch' để lắng nghe trạng thái loading (thay vì context.watch)
+    final isLoading = ref.watch(authNotifierProvider).isLoading;
 
     return Scaffold(
       body: Center(

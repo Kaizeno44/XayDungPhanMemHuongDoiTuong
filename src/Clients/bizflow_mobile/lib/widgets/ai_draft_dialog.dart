@@ -19,7 +19,7 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
   String _paymentMethod = 'Cash';
 
   // Danh sách tạm thời để chỉnh sửa
-  List<CartItem> _draftItems = [];
+  final List<CartItem> _draftItems = [];
 
   // Quản lý controller cho từng ô nhập số lượng (Key là productId)
   final Map<int, TextEditingController> _qtyControllers = {};
@@ -32,10 +32,12 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
 
   void _initData() {
     // 1. Fill thông tin khách
-    _nameController =
-        TextEditingController(text: widget.data['customer_name'] ?? '');
-    _phoneController =
-        TextEditingController(text: widget.data['customer_phone'] ?? '');
+    _nameController = TextEditingController(
+      text: widget.data['customer_name'] ?? '',
+    );
+    _phoneController = TextEditingController(
+      text: widget.data['customer_phone'] ?? '',
+    );
 
     // 2. Fill phương thức thanh toán
     String method = widget.data['payment_method'] ?? 'Cash';
@@ -52,19 +54,22 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
         final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
 
         // Tạo CartItem
-        _draftItems.add(CartItem(
-          productId: productId,
-          productName: item['product_name'] ?? 'Sản phẩm',
-          unitId: 1, // Logic tạm
-          unitName: item['unit'] ?? 'ĐVT',
-          price: (item['price'] as num?)?.toDouble() ?? 0,
-          quantity: quantity,
-          maxStock: 9999,
-        ));
+        _draftItems.add(
+          CartItem(
+            productId: productId,
+            productName: item['product_name'] ?? 'Sản phẩm',
+            unitId: 1, // Logic tạm
+            unitName: item['unit'] ?? 'ĐVT',
+            price: (item['price'] as num?)?.toDouble() ?? 0,
+            quantity: quantity,
+            maxStock: 9999,
+          ),
+        );
 
         // Tạo Controller cho ô nhập liệu của sản phẩm này
-        _qtyControllers[productId] =
-            TextEditingController(text: quantity.toString());
+        _qtyControllers[productId] = TextEditingController(
+          text: quantity.toString(),
+        );
       }
     }
   }
@@ -177,7 +182,7 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                value: _paymentMethod,
+                initialValue: _paymentMethod,
                 decoration: const InputDecoration(
                   labelText: "Thanh toán",
                   isDense: true,
@@ -207,9 +212,11 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                           _draftItems.clear();
                         });
                       },
-                      child: const Text("Xóa hết",
-                          style: TextStyle(color: Colors.red)),
-                    )
+                      child: const Text(
+                        "Xóa hết",
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
                 ],
               ),
 
@@ -217,8 +224,11 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                 const Padding(
                   padding: EdgeInsets.all(20),
                   child: Center(
-                      child: Text("Danh sách trống",
-                          style: TextStyle(color: Colors.grey))),
+                    child: Text(
+                      "Danh sách trống",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
                 ),
 
               ..._draftItems.map((item) {
@@ -227,7 +237,8 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                   elevation: 2,
                   color: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Column(
@@ -253,8 +264,11 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                               onTap: () => _removeItem(item),
                               child: const Padding(
                                 padding: EdgeInsets.only(left: 8, bottom: 8),
-                                child: Icon(Icons.close,
-                                    color: Colors.grey, size: 20),
+                                child: Icon(
+                                  Icons.close,
+                                  color: Colors.grey,
+                                  size: 20,
+                                ),
                               ),
                             ),
                           ],
@@ -268,9 +282,10 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                             Text(
                               "${currencyFormat.format(item.price)} / ${item.unitName}",
                               style: TextStyle(
-                                  color: Colors.blue[700],
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500),
+                                color: Colors.blue[700],
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
 
                             // Bộ điều khiển số lượng ( -  Input  + )
@@ -287,7 +302,9 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                                     icon: const Icon(Icons.remove, size: 16),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(
-                                        minWidth: 30, minHeight: 30),
+                                      minWidth: 30,
+                                      minHeight: 30,
+                                    ),
                                     onPressed: () => _updateQuantity(item, -1),
                                   ),
                                   // [Ô NHẬP SỐ LƯỢNG]
@@ -299,12 +316,14 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                                       keyboardType: TextInputType.number,
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(
-                                          fontWeight: FontWeight.bold),
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                       decoration: const InputDecoration(
                                         border: InputBorder.none,
                                         isDense: true,
-                                        contentPadding:
-                                            EdgeInsets.symmetric(vertical: 8),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
                                       ),
                                       onChanged: (val) =>
                                           _onTypeQuantity(item, val),
@@ -314,19 +333,21 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
                                     icon: const Icon(Icons.add, size: 16),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(
-                                        minWidth: 30, minHeight: 30),
+                                      minWidth: 30,
+                                      minHeight: 30,
+                                    ),
                                     onPressed: () => _updateQuantity(item, 1),
                                   ),
                                 ],
                               ),
-                            )
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ),
         ),

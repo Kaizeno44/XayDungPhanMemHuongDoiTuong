@@ -12,8 +12,78 @@ import { notification } from "antd";
 
 export default function MerchantDashboard() {
   const router = useRouter();
+  
+  // 1. State cho biểu đồ (Cũ)
   const [revenueData, setRevenueData] = useState([]);
+  
+  // 2. State cho số liệu tổng quan (Mới - Của B và C)
+  const [summaryStats, setSummaryStats] = useState({
+    products: 0,
+    orders: 0,
+    debt: 15000000 // Giả định khách nợ lấy từ Accounting
+  });
+
+  // 3. State cho Top 5 và Cảnh báo tồn kho
+  const [topProducts, setTopProducts] = useState([]);
+  const [lowStockProducts, setLowStockProducts] = useState([]);
+  
   const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    const token = Cookies.get("accessToken");
+    if (!token) return;
+
+    try {
+      // --- GỌI SONG SONG CÁC API ---
+      const [productRes, dashboardStatsRes, lowStockRes] = await Promise.allSettled([
+        // 1. API Sản phẩm (Tổng số lượng)
+        axios.get("http://localhost:5000/api/products/count", {
+           headers: { Authorization: `Bearer ${token}` }
+        }),
+        // 2. API Dashboard Stats (Doanh thu, Đơn hàng, Biểu đồ, Top 5)
+        axios.get("http://localhost:5000/api/Dashboard/stats", {
+           headers: { Authorization: `Bearer ${token}` }
+        }),
+        // 3. API Low Stock (Cảnh báo tồn kho)
+        axios.get("http://localhost:5000/api/Products/low-stock", {
+           headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      // --- XỬ LÝ DỮ LIỆU ---
+      
+      // 1. Xử lý Số liệu tổng quan & Biểu đồ & Top 5
+      if (dashboardStatsRes.status === 'fulfilled') {
+        const data = dashboardStatsRes.value.data;
+        setRevenueData(data.weeklyRevenue || []);
+        setTopProducts(data.topProducts || []);
+        setSummaryStats(prev => ({
+          ...prev,
+          orders: data.todayOrdersCount || 0,
+          todayRevenue: data.todayRevenue || 0,
+          debt: data.totalDebt || 0
+        }));
+      }
+
+      // 2. Xử lý Tổng số sản phẩm
+      if (productRes.status === 'fulfilled') {
+        setSummaryStats(prev => ({
+          ...prev,
+          products: productRes.value.data.count || 0
+        }));
+      }
+
+      // 3. Xử lý Cảnh báo tồn kho
+      if (lowStockRes.status === 'fulfilled') {
+        setLowStockProducts(lowStockRes.value.data || []);
+      }
+
+    } catch (err) {
+      console.error("Lỗi tải dữ liệu Dashboard:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const token = Cookies.get("accessToken");
@@ -22,20 +92,7 @@ export default function MerchantDashboard() {
       return;
     }
 
-    const fetchRevenue = async () => {
-      try {
-        const response = await axios.get("http://localhost:5000/api/Accounting/revenue-stats", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setRevenueData(response.data);
-      } catch (err) {
-        console.error("Lỗi tải doanh thu:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRevenue();
+    fetchData();
 
     // --- CẤU HÌNH SIGNALR ---
     const connection = new signalR.HubConnectionBuilder()
@@ -60,7 +117,7 @@ export default function MerchantDashboard() {
         duration: 5
       });
       // Refresh data khi có đơn mới
-      fetchRevenue();
+      fetchData();
     });
 
     return () => {
@@ -68,16 +125,33 @@ export default function MerchantDashboard() {
     };
   }, [router]);
 
+  // Cập nhật số liệu vào UI
   const stats = [
-    { title: "Doanh thu hôm nay", value: revenueData.length > 0 ? new Intl.NumberFormat('vi-VN').format(revenueData[revenueData.length - 1].revenue) + " ₫" : "0 ₫", desc: "Cập nhật mới nhất", color: "text-green-600" },
-    { title: "Đơn hàng mới", value: "3", desc: "Đang chờ xử lý", color: "text-blue-600" },
-    { title: "Khách nợ", value: "15.000.000 ₫", desc: "Cần thu hồi gấp", color: "text-red-600" },
+    { 
+      title: "Doanh thu hôm nay", 
+      value: new Intl.NumberFormat('vi-VN').format(summaryStats.todayRevenue || 0) + " ₫", 
+      desc: "Cập nhật mới nhất", 
+      color: "text-green-600" 
+    },
+    { 
+      title: "Đơn hàng mới", 
+      value: summaryStats.orders, // <-- Dữ liệu thật từ C
+      desc: "Đang chờ xử lý", 
+      color: "text-blue-600" 
+    },
+    { 
+      title: "Tổng sản phẩm", // <-- Thêm cái này cho xịn
+      value: summaryStats.products, // <-- Dữ liệu thật từ B
+      desc: "Trong kho hàng", 
+      color: "text-purple-600" 
+    },
   ];
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Xin chào, Chủ Cửa Hàng 👋</h1>
       
+      {/* KHỐI THỐNG KÊ (Đã cập nhật dữ liệu thật) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {stats.map((stat, idx) => (
           <div key={idx} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -88,6 +162,78 @@ export default function MerchantDashboard() {
         ))}
       </div>
 
+      {/* THÊM PHẦN TOP 5 VÀ CẢNH BÁO TỒN KHO */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Top 5 Bán Chạy */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <span>🏆</span> Top 5 Bán Chạy (Tháng này)
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="pb-2">Sản phẩm ID</th>
+                  <th className="pb-2 text-right">Số lượng</th>
+                  <th className="pb-2 text-right">Doanh thu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topProducts.length > 0 ? (
+                  topProducts.map((p, idx) => (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td className="py-3 font-medium">#{p.productId}</td>
+                      <td className="py-3 text-right">{p.totalQuantity}</td>
+                      <td className="py-3 text-right text-green-600 font-semibold">
+                        {new Intl.NumberFormat('vi-VN').format(p.totalRevenue)} đ
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="3" className="py-4 text-center text-gray-400">Chưa có dữ liệu bán hàng</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Cảnh báo tồn kho */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2 text-red-600">
+            <span>⚠️</span> Cảnh báo tồn kho (Sắp hết)
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="pb-2">Sản phẩm</th>
+                  <th className="pb-2">SKU</th>
+                  <th className="pb-2 text-right">Tồn kho</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowStockProducts.length > 0 ? (
+                  lowStockProducts.map((p, idx) => (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td className="py-3 font-medium">{p.name}</td>
+                      <td className="py-3 text-gray-500">{p.sku}</td>
+                      <td className="py-3 text-right text-red-600 font-bold">{p.currentStock}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="3" className="py-4 text-center text-gray-400">Kho hàng ổn định</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* BIỂU ĐỒ DOANH THU (Giữ nguyên code cũ của bạn) */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
         <h2 className="text-lg font-bold text-gray-900 mb-6">Biểu đồ Doanh thu (7 ngày gần nhất)</h2>
         <div className="h-80 w-full">
@@ -97,19 +243,20 @@ export default function MerchantDashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={revenueData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" />
+                <XAxis dataKey="dayName" />
                 <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
                 <Tooltip 
                   formatter={(value) => [new Intl.NumberFormat('vi-VN').format(value) + ' đ', 'Doanh thu']}
                 />
                 <Legend />
-                <Bar dataKey="revenue" name="Doanh thu" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="amount" name="Doanh thu" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
 
+      {/* CÁC NÚT TẮT (Giữ nguyên) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <QuickActionCard 
           href="/reports"

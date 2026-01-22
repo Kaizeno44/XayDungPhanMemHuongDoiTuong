@@ -1,49 +1,98 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:provider/provider.dart' as provider; // Alias
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // Riverpod
 import 'package:intl/intl.dart';
-import 'cart_provider.dart';
-import 'models.dart';
-import 'core/api_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'screens/stock_import_screen.dart';
-import 'providers/auth_provider.dart';
-import 'product_service.dart';
+import 'dart:async';
 
-class ProductDetailScreen extends StatefulWidget {
+// --- IMPORTS ---
+import 'package:bizflow_mobile/models.dart';
+// [MỚI] Import Controller giỏ hàng mới
+import 'package:bizflow_mobile/features/cart/cart_controller.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart';
+import 'package:bizflow_mobile/core/api_service.dart';
+import 'package:bizflow_mobile/core/service_locator.dart';
+import 'package:bizflow_mobile/screens/stock_import_screen.dart';
+
+// Import SignalR
+import 'package:bizflow_mobile/services/signalr_service.dart';
+import 'package:bizflow_mobile/models/events/stock_update_event.dart';
+
+class ProductDetailScreen extends ConsumerStatefulWidget {
   final Product product;
 
   const ProductDetailScreen({super.key, required this.product});
 
   @override
-  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+  ConsumerState<ProductDetailScreen> createState() =>
+      _ProductDetailScreenState();
 }
 
-class _ProductDetailScreenState extends State<ProductDetailScreen> {
-  final ApiService _apiService = ApiService();
-  final ProductService _productService = ProductService(); // Thêm service để lấy data mới
+class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
+  final ApiService _apiService = ServiceLocator.apiService;
+
   ProductUnit? _selectedUnit;
   int _quantity = 1;
   String _stockMessage = '';
-  double _currentInventory = 0; // Biến local để cập nhật UI nhanh
+  double _currentInventory = 0;
+  StreamSubscription<StockUpdateEvent>? _signalRSubscription;
 
   @override
   void initState() {
     super.initState();
     _currentInventory = widget.product.inventoryQuantity;
-    // Chọn đơn vị mặc định (Base Unit)
+
     _selectedUnit = widget.product.productUnits.firstWhere(
       (unit) => unit.isBaseUnit,
       orElse: () => widget.product.productUnits.first,
     );
-    _checkStock();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkStock();
+      _listenToRealtimeUpdates();
+    });
+  }
+
+  void _listenToRealtimeUpdates() {
+    final signalRService = ref.read(signalRServiceProvider.notifier);
+
+    _signalRSubscription = signalRService.stockUpdateStream.listen((event) {
+      if (event.productId == widget.product.id) {
+        if (mounted) {
+          setState(() {
+            _currentInventory = event.newQuantity;
+          });
+          _checkStock();
+
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('⚠️ Tồn kho vừa cập nhật: ${event.newQuantity}'),
+              backgroundColor: Colors.orange[800],
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _signalRSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshProductData() async {
     try {
-      final updatedProduct = await _productService.getProductById(widget.product.id);
+      final updatedProduct = await ServiceLocator.productRepo.getProductById(
+        widget.product.id,
+      );
+
       if (mounted) {
         setState(() {
-          _currentInventory = updatedProduct.inventoryQuantity;
+          _currentInventory = updatedProduct.inventoryQuantity ?? 0.0;
         });
       }
     } catch (e) {
@@ -53,96 +102,137 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _checkStock() async {
     if (_selectedUnit == null) return;
+    if (!mounted) return;
 
     try {
-      final result = await _apiService.simpleCheckStock(
-        widget.product.id,
-        _selectedUnit!.id,
-        _quantity.toDouble(),
-      );
+      final response = await _apiService.productService.checkStock({
+        'requests': [
+          {
+            'productId': widget.product.id,
+            'unitId': _selectedUnit!.id,
+            'quantity': _quantity,
+          },
+        ],
+      });
+
       if (mounted) {
-        setState(() {
-          _stockMessage = result.message;
-        });
+        if (response.isSuccessful) {
+          final dynamic body = response.body;
+          SimpleCheckStockResult result;
+
+          if (body is List && body.isNotEmpty) {
+            result = SimpleCheckStockResult.fromJson(body.first);
+          } else if (body is Map<String, dynamic>) {
+            result = SimpleCheckStockResult.fromJson(body);
+          } else {
+            setState(() => _stockMessage = '');
+            return;
+          }
+
+          setState(() {
+            _stockMessage = result.message;
+          });
+        } else {
+          setState(() {
+            _stockMessage = 'Lỗi kiểm tra kho (${response.statusCode})';
+          });
+        }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _stockMessage = 'Lỗi kiểm tra tồn kho: $e';
-        });
-      }
+      if (mounted) setState(() => _stockMessage = '');
     }
   }
 
   void _updateQuantity(int change) {
     setState(() {
-      _quantity = (_quantity + change).clamp(1, 999); // Giới hạn số lượng
+      _quantity = (_quantity + change).clamp(1, 999);
     });
     _checkStock();
   }
 
+  // 🔥 [CẬP NHẬT QUAN TRỌNG] Sửa logic thêm vào giỏ hàng
   Future<void> _addToCart() async {
     if (_selectedUnit == null) return;
-
-    // 1. Kiểm tra tồn kho qua API trước
-    final stockResult = await _apiService.simpleCheckStock(
-      widget.product.id,
-      _selectedUnit!.id,
-      _quantity.toDouble(),
-    );
-
     if (!mounted) return;
 
-    // 👇 ĐÃ SỬA: Dùng .isAvailable thay vì .isEnough
-    if (!stockResult.isAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(stockResult.message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    if (_currentInventory <= 0) {
+      _showSnackBar('Sản phẩm đã hết hàng!', isError: true);
       return;
     }
 
-    // 2. Tạo CartItem
-    final cartItem = CartItem(
-      productId: widget.product.id,
-      productName: widget.product.name,
-      unitId: _selectedUnit!.id,
-      unitName: _selectedUnit!.unitName,
-      price: _selectedUnit!.price,
-      quantity: _quantity,
-      maxStock: widget.product.inventoryQuantity,
-    );
+    try {
+      // 1. Kiểm tra tồn kho phía Server trước cho chắc chắn
+      final response = await _apiService.productService.checkStock({
+        'requests': [
+          {
+            'productId': widget.product.id,
+            'unitId': _selectedUnit!.id,
+            'quantity': _quantity,
+          },
+        ],
+      });
 
-    // 3. Gọi CartProvider để thêm vào giỏ (và nhận về lỗi nếu có)
-    final errorMsg = Provider.of<CartProvider>(
-      context,
-      listen: false,
-    ).addToCart(cartItem);
+      if (!response.isSuccessful) {
+        _showSnackBar('Lỗi khi kiểm tra tồn kho', isError: true);
+        return;
+      }
 
-    if (errorMsg == null) {
-      // Thành công
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 1),
-        ),
+      final dynamic body = response.body;
+      SimpleCheckStockResult stockResult;
+
+      if (body is List && body.isNotEmpty) {
+        stockResult = SimpleCheckStockResult.fromJson(body.first);
+      } else {
+        stockResult = SimpleCheckStockResult.fromJson(body);
+      }
+
+      if (!stockResult.isAvailable) {
+        _showSnackBar(stockResult.message, isError: true);
+        return;
+      }
+
+      // 2. Tạo CartItem
+      final cartItem = CartItem(
+        productId: widget.product.id,
+        productName: widget.product.name,
+        unitId: _selectedUnit!.id,
+        unitName: _selectedUnit!.unitName,
+        price: _selectedUnit!.price,
+        quantity: _quantity,
+        maxStock: _currentInventory,
       );
-    } else {
-      // Thất bại (do logic trong CartProvider chặn)
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+
+      // 3. [SỬA LỖI] Dùng Riverpod CartController thay vì Provider cũ
+      // Gọi .notifier để truy cập các hàm logic (addToCart)
+      final errorMsg = ref
+          .read(cartControllerProvider.notifier)
+          .addToCart(cartItem);
+
+      if (errorMsg == null) {
+        _showSnackBar(
+          'Đã thêm $_quantity ${_selectedUnit!.unitName} vào giỏ!',
+          isError: false,
+        );
+        // ignore: use_build_context_synchronously
+        Navigator.pop(context); // Quay lại màn hình trước
+      } else {
+        _showSnackBar(errorMsg, isError: true);
+      }
+    } catch (e) {
+      _showSnackBar('Đã xảy ra lỗi: $e', isError: true);
     }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -160,45 +250,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Ảnh sản phẩm
             Center(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  width: 200,
-                  height: 200,
+                  width: double.infinity,
+                  height: 250,
                   color: Colors.grey[200],
-                  child: widget.product.imageUrl != null &&
+                  child:
+                      widget.product.imageUrl != null &&
                           widget.product.imageUrl!.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: widget.product.imageUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                          errorWidget: (context, url, error) => Icon(
-                            Icons.image,
-                            size: 100,
-                            color: Colors.grey[400],
+                          placeholder: (_, __) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (_, __, ___) => const Icon(
+                            Icons.broken_image,
+                            size: 50,
+                            color: Colors.grey,
                           ),
                         )
-                      : Icon(Icons.image, size: 100, color: Colors.grey[400]),
+                      : const Icon(Icons.image, size: 100, color: Colors.grey),
                 ),
               ),
             ),
             const SizedBox(height: 24),
-
-            // Tên sản phẩm
             Text(
               widget.product.name,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
 
-            // Khu vực Quản lý kho (Chỉ dành cho Owner)
-            Consumer<AuthProvider>(
+            // Phần dành cho Owner/Admin
+            provider.Consumer<AuthProvider>(
               builder: (context, auth, child) {
-                if (auth.currentUser?.role != 'Owner') return const SizedBox();
+                final role = (auth.currentUser?.role ?? '').toLowerCase();
+                if (role != 'owner' && role != 'admin') return const SizedBox();
+
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   padding: const EdgeInsets.all(12),
@@ -216,7 +305,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'QUẢN LÝ KHO',
+                              'QUẢN LÝ KHO (REAL-TIME)',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -225,7 +314,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ),
                             Text(
                               'Hiện có: ${_currentInventory.toStringAsFixed(0)} ${widget.product.unitName}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                           ],
                         ),
@@ -235,12 +327,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => StockImportScreen(product: widget.product),
+                              builder: (context) =>
+                                  StockImportScreen(product: widget.product),
                             ),
                           );
                           if (result == true) {
-                            _checkStock();
-                            _refreshProductData(); // Lấy số lượng mới từ server
+                            _refreshProductData();
                           }
                         },
                         style: ElevatedButton.styleFrom(
@@ -256,25 +348,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               },
             ),
 
-            // Mô tả
             Text(
               widget.product.description ?? 'Không có mô tả.',
               style: TextStyle(fontSize: 16, color: Colors.grey[700]),
             ),
             const SizedBox(height: 24),
+            const Divider(),
 
-            // Chọn đơn vị tính
             const Text(
-              'Đơn vị tính:',
+              "Đơn vị tính:",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Wrap(
-              spacing: 8.0,
+              spacing: 8,
               children: widget.product.productUnits.map((unit) {
+                final isSelected = _selectedUnit?.id == unit.id;
                 return ChoiceChip(
                   label: Text(unit.unitName),
-                  selected: _selectedUnit?.id == unit.id,
+                  selected: isSelected,
                   onSelected: (selected) {
                     if (selected) {
                       setState(() {
@@ -286,29 +378,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   selectedColor: Colors.blue[100],
                   backgroundColor: Colors.grey[200],
                   labelStyle: TextStyle(
-                    color: _selectedUnit?.id == unit.id
-                        ? Colors.blue[800]
-                        : Colors.black87,
+                    color: isSelected ? Colors.blue[800] : Colors.black87,
                     fontWeight: FontWeight.bold,
                   ),
                 );
               }).toList(),
             ),
             const SizedBox(height: 16),
-
-            // Giá
             if (_selectedUnit != null)
               Text(
                 'Giá: ${currencyFormat.format(_selectedUnit!.price)} / ${_selectedUnit!.unitName}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.red,
+                  color: Colors.red[700],
                 ),
               ),
             const SizedBox(height: 24),
-
-            // Chọn số lượng
             const Text(
               'Số lượng:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -316,20 +402,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: () => _updateQuantity(-1),
-                ),
-                Text(
-                  '$_quantity',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => _updateQuantity(1),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => _updateQuantity(-1),
+                        icon: const Icon(Icons.remove_circle_outline),
+                      ),
+                      Text(
+                        '$_quantity',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => _updateQuantity(1),
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -338,7 +434,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     style: TextStyle(
                       color:
                           _stockMessage.toLowerCase().contains('không') ||
-                              _stockMessage.toLowerCase().contains('not')
+                              _stockMessage.toLowerCase().contains('not') ||
+                              _stockMessage.contains('Lỗi')
                           ? Colors.red
                           : Colors.green,
                       fontWeight: FontWeight.bold,
@@ -348,24 +445,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ],
             ),
             const SizedBox(height: 32),
-
-            // Nút Thêm vào giỏ
             Center(
-              child: ElevatedButton.icon(
-                onPressed: _addToCart,
-                icon: const Icon(Icons.add_shopping_cart, color: Colors.white),
-                label: const Text(
-                  'Thêm vào giỏ hàng',
-                  style: TextStyle(fontSize: 18, color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[800],
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 30,
-                    vertical: 15,
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: (_currentInventory > 0) ? _addToCart : null,
+                  icon: const Icon(
+                    Icons.add_shopping_cart,
+                    color: Colors.white,
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                  label: Text(
+                    _currentInventory > 0 ? 'Thêm vào giỏ hàng' : 'HẾT HÀNG',
+                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _currentInventory > 0
+                        ? Colors.blue[800]
+                        : Colors.grey,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 15,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),

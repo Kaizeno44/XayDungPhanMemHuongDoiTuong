@@ -69,9 +69,9 @@ class _StockImportScreenState extends State<StockImportScreen> {
 
       if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Nhập kho thành công!')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Nhập kho thành công!')));
           Navigator.pop(context, true);
         }
       } else {
@@ -105,12 +105,15 @@ class _StockImportScreenState extends State<StockImportScreen> {
             children: [
               Text(
                 'Sản phẩm: ${widget.product.name}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 20),
-              
+
               DropdownButtonFormField<ProductUnit>(
-                value: _selectedUnit,
+                initialValue: _selectedUnit,
                 decoration: const InputDecoration(labelText: 'Đơn vị nhập'),
                 items: widget.product.productUnits.map((unit) {
                   return DropdownMenuItem(
@@ -120,46 +123,69 @@ class _StockImportScreenState extends State<StockImportScreen> {
                 }).toList(),
                 onChanged: (val) => setState(() => _selectedUnit = val),
               ),
-              
+
               const SizedBox(height: 16),
               TextFormField(
                 controller: _quantityController,
-                decoration: const InputDecoration(labelText: 'Số lượng nhập', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Số lượng nhập',
+                  border: OutlineInputBorder(),
+                ),
                 keyboardType: TextInputType.number,
-                validator: (val) => (val == null || val.isEmpty) ? 'Vui lòng nhập số lượng' : null,
+                validator: (val) => (val == null || val.isEmpty)
+                    ? 'Vui lòng nhập số lượng'
+                    : null,
               ),
-              
+
               const SizedBox(height: 16),
               TextFormField(
                 controller: _costPriceController,
-                decoration: const InputDecoration(labelText: 'Giá vốn (Giá nhập)', border: OutlineInputBorder(), suffixText: 'đ'),
+                decoration: const InputDecoration(
+                  labelText: 'Giá vốn (Giá nhập)',
+                  border: OutlineInputBorder(),
+                  suffixText: 'đ',
+                ),
                 keyboardType: TextInputType.number,
-                validator: (val) => (val == null || val.isEmpty) ? 'Vui lòng nhập giá vốn' : null,
+                validator: (val) => (val == null || val.isEmpty)
+                    ? 'Vui lòng nhập giá vốn'
+                    : null,
               ),
-              
+
               const SizedBox(height: 16),
               TextFormField(
                 controller: _supplierController,
-                decoration: const InputDecoration(labelText: 'Nhà cung cấp', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Nhà cung cấp',
+                  border: OutlineInputBorder(),
+                ),
               ),
-              
+
               const SizedBox(height: 16),
               TextFormField(
                 controller: _noteController,
-                decoration: const InputDecoration(labelText: 'Ghi chú', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Ghi chú',
+                  border: OutlineInputBorder(),
+                ),
                 maxLines: 3,
               ),
-              
+
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _submitImport,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800], foregroundColor: Colors.white),
-                  child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('XÁC NHẬN NHẬP KHO', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange[800],
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text(
+                          'XÁC NHẬN NHẬP KHO',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ],

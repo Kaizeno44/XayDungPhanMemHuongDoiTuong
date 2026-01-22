@@ -32,14 +32,21 @@ export default function LoginPage() {
 
       Cookies.set('accessToken', token, { expires: 1 });
 
-      if (userRole === 'SuperAdmin' || userRole === 'Owner') {
-          router.push('/merchant/dashboard');
-      } else if (userRole === 'Employee') {
-          alert("⛔ TÀI KHOẢN NHÂN VIÊN KHÔNG ĐƯỢC PHÉP TRUY CẬP WEB!");
-          Cookies.remove('accessToken');
-      } else {
-          setError("Tài khoản không có quyền truy cập hợp lệ!");
-      }
+      // --- SỬA ĐOẠN NÀY ---
+      console.log("Vai trò đăng nhập:", userRole); // Log ra để kiểm tra
+
+      if (userRole === 'SuperAdmin') {
+          // 1. Nếu là Admin -> Cho sang trang quản trị hệ thống
+          router.push('/admin/dashboard'); 
+      } else if (userRole === 'Owner') {
+          // 2. Nếu là Chủ shop -> Cho sang trang bán hàng
+          router.push('/merchant/dashboard');
+      } else if (userRole === 'Employee') {
+          alert("⛔ TÀI KHOẢN NHÂN VIÊN KHÔNG ĐƯỢC PHÉP TRUY CẬP WEB!");
+          Cookies.remove('accessToken');
+      } else {
+          setError("Tài khoản không có quyền truy cập hợp lệ!");
+      }
 
     } catch (err) {
       console.error(err);

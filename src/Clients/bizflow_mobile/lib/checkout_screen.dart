@@ -1,28 +1,29 @@
 // lib/checkout_screen.dart
 import 'dart:convert';
 import 'dart:async';
-import 'package:bizflow_mobile/create_customer_dialog.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // [MỚI] Riverpod
 import 'package:http/http.dart' as http;
 
-import 'cart_provider.dart';
-import 'screens/invoice_preview_screen.dart';
-// 👈 IMPORT MỚI
+// [MỚI] Import Controller & Models
+import 'package:bizflow_mobile/features/cart/cart_controller.dart';
 import '../core/config/api_config.dart';
 import '../models.dart';
+import 'screens/invoice_preview_screen.dart';
+import 'create_customer_dialog.dart';
 import 'order_history_screen.dart';
 
-class CheckoutScreen extends StatefulWidget {
+// 1. Chuyển thành ConsumerStatefulWidget
+class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.storeId});
 
   final String storeId;
 
   @override
-  State<CheckoutScreen> createState() => _CheckoutScreenState();
+  ConsumerState<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
-class _CheckoutScreenState extends State<CheckoutScreen> {
+class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   List<Customer> customers = [];
   String? selectedCustomerId;
   String selectedPaymentMethod = "Cash";
@@ -35,7 +36,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _fetchCustomers();
   }
 
-  // --- 1. FETCH KHÁCH HÀNG ---
+  // --- 1. FETCH KHÁCH HÀNG (Giữ nguyên logic cũ) ---
   Future<void> _fetchCustomers() async {
     final url = Uri.parse(ApiConfig.customers);
     try {
@@ -65,24 +66,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // --- 2. TẠO ĐƠN HÀNG ---
-  Future<void> createOrder(CartProvider cart) async {
+  // --- 2. TẠO ĐƠN HÀNG (Dùng Riverpod CartController) ---
+  Future<void> createOrder() async {
+    // [MỚI] Lấy dữ liệu giỏ hàng từ Riverpod
+    final cartState = ref.read(cartControllerProvider);
+
     if (selectedCustomerId == null) {
-      _showSnackBar("Vui lòng chọn khách hàng");
+      _showSnackBar("Vui lòng chọn khách hàng", isError: true);
       return;
     }
-    if (cart.items.isEmpty) {
-      _showSnackBar("Giỏ hàng đang trống!");
+    if (cartState.items.isEmpty) {
+      _showSnackBar("Giỏ hàng đang trống!", isError: true);
       return;
     }
 
     setState(() => isLoadingOrder = true);
 
-    final itemsSnapshot = List<CartItem>.from(cart.items);
-    final totalSnapshot = itemsSnapshot.fold(
-      0.0,
-      (sum, item) => sum + item.total,
-    );
+    // Snapshot dữ liệu để hiển thị hóa đơn sau khi xóa giỏ hàng
+    final itemsSnapshot = List<CartItem>.from(cartState.items);
+    final totalSnapshot = cartState.totalAmount;
 
     // Tìm khách hàng đã chọn để lấy tên hiển thị
     final customerObj = customers.firstWhere(
@@ -95,7 +97,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       "customerId": selectedCustomerId,
       "storeId": widget.storeId,
       "paymentMethod": selectedPaymentMethod,
-      "items": cart.items.map((e) => e.toJson()).toList(),
+      "items": cartState.items.map((e) => e.toJson()).toList(),
     };
 
     try {
@@ -104,7 +106,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        cart.clearCart();
+        // [QUAN TRỌNG] Xóa giỏ hàng thông qua Controller
+        ref.read(cartControllerProvider.notifier).clearCart();
+
         if (mounted) {
           _showSuccessDialog(itemsSnapshot, totalSnapshot, customerObj.name);
         }
@@ -118,19 +122,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
           }
         } catch (_) {}
-        if (mounted) _showSnackBar("Lỗi: $errorMsg");
+        if (mounted) _showSnackBar("Lỗi: $errorMsg", isError: true);
       }
     } catch (e) {
-      if (mounted) _showSnackBar("Lỗi kết nối: $e");
+      if (mounted) _showSnackBar("Lỗi kết nối: $e", isError: true);
     } finally {
       if (mounted) setState(() => isLoadingOrder = false);
     }
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
+    );
   }
 
   void _showSuccessDialog(
@@ -164,8 +171,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         actions: [
           OutlinedButton(
             onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(ctx).pop();
+              Navigator.of(ctx).pop(); // Đóng dialog
+              Navigator.of(context).pop(); // Về màn hình Cart
+              Navigator.of(context).pop(); // Về màn hình Home (nếu cần)
             },
             child: const Text("Đóng"),
           ),
@@ -199,15 +207,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cart = Provider.of<CartProvider>(context);
+    // Lắng nghe số lượng items để hiển thị trên nút xác nhận
+    final cartState = ref.watch(cartControllerProvider);
+    final itemCount = cartState.items.length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Thanh toán")),
+      appBar: AppBar(
+        title: const Text("Thanh toán"),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // --- KHU VỰC CHỌN KHÁCH HÀNG (CÓ NÚT +) ---
+            // --- KHU VỰC CHỌN KHÁCH HÀNG ---
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -230,8 +244,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                           ),
                           isExpanded: true,
-                          initialValue: selectedCustomerId,
-                          hint: const Text("Khách lẻ"),
+                          value:
+                              selectedCustomerId, // Fix: Dùng value thay vì initialValue
+                          hint: const Text("Chọn khách hàng..."),
                           items: customers
                               .map(
                                 (c) => DropdownMenuItem(
@@ -253,7 +268,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 // NÚT THÊM NHANH KHÁCH HÀNG
                 Container(
                   width: 55,
-                  height: 55, // Khớp chiều cao với Dropdown mặc định
+                  height: 55,
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(4),
@@ -263,19 +278,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     icon: const Icon(Icons.person_add, color: Colors.blue),
                     tooltip: "Thêm khách mới",
                     onPressed: () async {
-                      // Gọi Dialog tạo khách
                       final newCustomer = await showDialog<Customer>(
                         context: context,
                         builder: (_) =>
                             CreateCustomerDialog(storeId: widget.storeId),
                       );
 
-                      // Nếu tạo thành công, Dialog trả về object Customer
                       if (newCustomer != null) {
                         setState(() {
-                          customers.add(newCustomer); // Thêm vào danh sách
-                          selectedCustomerId =
-                              newCustomer.id; // Chọn luôn người đó
+                          customers.add(newCustomer);
+                          selectedCustomerId = newCustomer.id;
                         });
                       }
                     },
@@ -352,10 +364,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: ElevatedButton(
                 onPressed:
                     (isLoadingOrder ||
-                        cart.items.isEmpty ||
+                        itemCount == 0 ||
                         selectedCustomerId == null)
                     ? null
-                    : () => createOrder(cart),
+                    : createOrder, // Gọi hàm createOrder mới
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
@@ -370,7 +382,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         child: CircularProgressIndicator(color: Colors.white),
                       )
                     : Text(
-                        "XÁC NHẬN TẠO ĐƠN (${cart.items.length} món)",
+                        "XÁC NHẬN TẠO ĐƠN ($itemCount món)",
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
               ),

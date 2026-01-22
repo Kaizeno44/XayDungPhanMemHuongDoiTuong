@@ -25,6 +25,7 @@ namespace Identity.API.Data
         public DbSet<Store> Stores { get; set; }
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
         public DbSet<Customer> Customers { get; set; }
+        public DbSet<Ledger> Ledgers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -53,6 +54,17 @@ namespace Identity.API.Data
                 .HasOne(u => u.Store)
                 .WithMany(s => s.Users)
                 .HasForeignKey(u => u.StoreId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<Ledger>()
+                .HasOne(l => l.Store)
+                .WithMany()
+                .HasForeignKey(l => l.StoreId);
+
+            builder.Entity<Ledger>()
+                .HasOne(l => l.Creator)
+                .WithMany()
+                .HasForeignKey(l => l.CreatedBy)
                 .OnDelete(DeleteBehavior.SetNull);
 
             // --- SEED DATA SubscriptionPlan ---

@@ -1,6 +1,12 @@
+import 'package:bizflow_mobile/core/router/app_router.dart';
 import 'package:bizflow_mobile/repositories/product_repository.dart';
+// Lưu ý: Kiểm tra đúng đường dẫn file này trong máy bạn (lib/services/ hay lib/core/services/)
+import 'package:bizflow_mobile/services/signalr_service.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:provider/provider.dart'; // Provider cũ
+// ignore: depend_on_referenced_packages
+import 'package:flutter_riverpod/flutter_riverpod.dart'
+    as riverpod; // Riverpod (dùng alias để tránh trùng tên)
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -9,17 +15,9 @@ import 'core/service_locator.dart';
 import 'core/api_service.dart';
 import 'services/fcm_service.dart';
 
-// --- REPOSITORY IMPORTS ---
-// [MỚI] Import Repo
-
 // --- PROVIDER IMPORTS ---
 import 'providers/auth_provider.dart';
-import 'cart_provider.dart';
-
-// --- SCREEN IMPORTS ---
-import 'screens/login_screen.dart';
-import 'product_list_screen.dart';
-import 'screens/owner_dashboard_screen.dart';
+// ❌ ĐÃ XÓA: import 'cart_provider.dart'; (Vì đã chuyển sang CartController Riverpod)
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,56 +25,91 @@ Future<void> main() async {
   // 1. Khởi tạo Firebase
   try {
     await Firebase.initializeApp();
-    print("✅ Firebase đã khởi tạo thành công");
+    debugPrint("✅ Firebase đã khởi tạo thành công");
   } catch (e) {
-    print("❌ Lỗi khởi tạo Firebase: $e");
+    debugPrint("❌ Lỗi khởi tạo Firebase: $e");
   }
 
-  // 2. Khởi tạo ServiceLocator (Dependency Injection)
-  // Bước này sẽ tạo sẵn ApiService và ProductRepository (Singleton)
+  // 2. Khởi tạo ServiceLocator (Cho các Service cũ)
   ServiceLocator.setup();
 
-  // 3. Khởi tạo Hive (Local Database)
+  // 3. Khởi tạo Hive
   await Hive.initFlutter();
   await Hive.openBox('productCache');
   await Hive.openBox('authBox');
 
-  // 4. Khởi tạo FCM (Notification)
+  // 4. Khởi tạo FCM
   try {
     FCMService().initialize();
   } catch (e) {
-    print("⚠️ Lỗi khởi tạo FCM: $e");
+    debugPrint("⚠️ Lỗi khởi tạo FCM: $e");
   }
 
   runApp(
-    MultiProvider(
+    // Bọc App trong ProviderScope của Riverpod
+    const riverpod.ProviderScope(child: AppConfig()),
+  );
+}
+
+// AppConfig: Cung cấp các Provider cũ (Legacy) cho các màn hình chưa chuyển đổi
+class AppConfig extends StatelessWidget {
+  const AppConfig({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
       providers: [
-        // A. Cung cấp ApiService (Lấy từ Singleton ServiceLocator)
+        // A. ApiService
         Provider<ApiService>(create: (_) => ServiceLocator.apiService),
 
-        // B. [QUAN TRỌNG] Cung cấp ProductRepository cho UI
-        // UI sẽ gọi: context.read<ProductRepository>().getProducts()
+        // B. ProductRepository
         Provider<ProductRepository>(create: (_) => ServiceLocator.productRepo),
 
-        // C. AuthProvider (Cần ApiService để login)
+        // C. AuthProvider (Vẫn giữ lại vì dùng chung nhiều nơi)
         ChangeNotifierProvider(
           create: (_) => AuthProvider(ServiceLocator.apiService),
         ),
 
-        // D. CartProvider
-        ChangeNotifierProvider(create: (_) => CartProvider()),
+        // ❌ ĐÃ XÓA: CartProvider
+        // Chúng ta không cung cấp CartProvider cũ nữa để ép buộc UI dùng CartController mới
       ],
       child: const MyApp(),
-    ),
-  );
+    );
+  }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends riverpod.ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context, riverpod.WidgetRef ref) {
+    // 1. Lấy cấu hình Router
+    final goRouter = ref.watch(appRouterProvider);
+
+    // 2. [QUAN TRỌNG] Logic quản lý SignalR tự động theo Auth
+    // Sử dụng .select để chỉ lắng nghe giá trị boolean isAuthenticated
+    ref.listen<bool>(
+      authNotifierProvider.select((value) => value.isAuthenticated),
+      (previous, isAuthenticated) {
+        // A. Vừa Đăng nhập thành công (false -> true)
+        // Hoặc mở app đã có sẵn token (previous là null/false)
+        if (isAuthenticated && (previous == false || previous == null)) {
+          debugPrint(
+            "🚀 Auth Changed: Login Detected -> Connecting SignalR...",
+          );
+          ref.read(signalRServiceProvider.notifier).connect();
+        }
+        // B. Vừa Đăng xuất (true -> false)
+        else if (!isAuthenticated && (previous == true)) {
+          debugPrint(
+            "🚀 Auth Changed: Logout Detected -> Disconnecting SignalR...",
+          );
+          ref.read(signalRServiceProvider.notifier).disconnect();
+        }
+      },
+    );
+
+    return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'BizFlow Mobile',
       theme: ThemeData(
@@ -89,39 +122,7 @@ class MyApp extends StatelessWidget {
           surfaceTintColor: Colors.white,
         ),
       ),
-      // Logic điều hướng chính dựa trên trạng thái đăng nhập
-      home: Consumer<AuthProvider>(
-        builder: (context, auth, child) {
-          // 🔥 Màn hình chờ: Đang load từ Hive hoặc đang gọi API
-          if (!auth.isAuthCheckComplete) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          // --- 1. CHƯA ĐĂNG NHẬP ---
-          if (!auth.isAuthenticated) {
-            return const LoginScreen();
-          }
-
-          // --- 2. ĐÃ ĐĂNG NHẬP -> PHÂN QUYỀN ---
-          final rawRole = auth.role;
-          print("🔍 DEBUG ROLE: '$rawRole'");
-
-          // Chuẩn hóa role
-          final role = rawRole?.trim().toLowerCase() ?? '';
-
-          // Kiểm tra quyền Owner/Admin
-          if (role == 'owner' || role == 'admin' || role == 'quản lý') {
-            print("✅ ĐIỀU HƯỚNG: -> Dashboard (Owner)");
-            return const OwnerDashboardScreen();
-          }
-
-          // Mặc định: Nhân viên
-          print("ℹ️ ĐIỀU HƯỚNG: -> Bán hàng (Staff)");
-          return const ProductListScreen();
-        },
-      ),
+      routerConfig: goRouter,
     );
   }
 }

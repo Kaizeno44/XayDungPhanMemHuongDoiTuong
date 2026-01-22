@@ -9,8 +9,8 @@ namespace Identity.Domain.Entities
         public string TaxCode { get; set; }   // Mã số thuế (nếu có)
 
         // --- Quản lý Gói cước ---
-        public Guid SubscriptionPlanId { get; set; }
-        public SubscriptionPlan SubscriptionPlan { get; set; }
+        public Guid? SubscriptionPlanId { get; set; }
+        public SubscriptionPlan? SubscriptionPlan { get; set; }
         public DateTime SubscriptionExpiryDate { get; set; } // Ngày hết hạn
 
         // Danh sách nhân viên + Ông chủ

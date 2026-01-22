@@ -1,12 +1,12 @@
 import 'package:json_annotation/json_annotation.dart';
 
-// 1. Export file Product mới tạo để các màn hình khác tìm thấy ProductUnit, Product
+// 1. Export file Product để các file khác chỉ cần import models.dart là đủ
 export 'models/product.dart';
-// export 'models/dashboard_stats.dart'; // Bỏ comment nếu bạn đã tạo file này
+// export 'models/dashboard_stats.dart'; // Bỏ comment nếu có file này
 
 part 'models.g.dart';
 
-// ================= CART ITEM =================
+// ================= CART ITEM (Giỏ hàng) =================
 @JsonSerializable()
 class CartItem {
   final int productId;
@@ -29,14 +29,37 @@ class CartItem {
 
   double get total => price * quantity;
 
+  // [CẢI TIẾN] Thêm copyWith để dễ dàng update số lượng trong Riverpod
+  CartItem copyWith({
+    int? productId,
+    String? productName,
+    int? unitId,
+    String? unitName,
+    double? price,
+    int? quantity,
+    double? maxStock,
+  }) {
+    return CartItem(
+      productId: productId ?? this.productId,
+      productName: productName ?? this.productName,
+      unitId: unitId ?? this.unitId,
+      unitName: unitName ?? this.unitName,
+      price: price ?? this.price,
+      quantity: quantity ?? this.quantity,
+      maxStock: maxStock ?? this.maxStock,
+    );
+  }
+
   factory CartItem.fromJson(Map<String, dynamic> json) =>
       _$CartItemFromJson(json);
   Map<String, dynamic> toJson() => _$CartItemToJson(this);
 }
 
-// ================= CUSTOMER =================
+// ================= CUSTOMER (Khách hàng) =================
 @JsonSerializable()
 class Customer {
+  // Dùng helper để đọc ID an toàn (chấp nhận cả int lẫn String từ server)
+  @JsonKey(readValue: _readIdAsString)
   final String id;
 
   @JsonKey(readValue: _readName)
@@ -59,8 +82,9 @@ class Customer {
     this.currentDebt = 0.0,
   });
 
+  // Helper: Đọc tên từ nhiều trường khác nhau (fallback)
   static Object? _readName(Map map, String key) {
-    return map['fullName'] ?? map['name'] ?? 'Khách lẻ';
+    return map['fullName'] ?? map['name'] ?? map['customerName'] ?? 'Khách lẻ';
   }
 
   factory Customer.fromJson(Map<String, dynamic> json) =>
@@ -68,7 +92,7 @@ class Customer {
   Map<String, dynamic> toJson() => _$CustomerToJson(this);
 }
 
-// ================= HELPER CLASSES =================
+// ================= HELPER CLASSES (Check kho & Giá) =================
 @JsonSerializable()
 class ProductPriceResult {
   final int productId;
@@ -111,10 +135,12 @@ class SimpleCheckStockResult {
       _$SimpleCheckStockResultFromJson(json);
 }
 
-// ================= AUTH MODELS =================
+// ================= AUTH MODELS (User & Token) =================
 @JsonSerializable()
 class User {
-  @JsonKey(readValue: _readCaseInsensitive)
+  // [QUAN TRỌNG] Server Identity trả về GUID (String), không phải int
+  // Helper này đảm bảo luôn convert sang String an toàn.
+  @JsonKey(readValue: _readIdAsString)
   final String id;
 
   @JsonKey(readValue: _readCaseInsensitive)
@@ -137,11 +163,10 @@ class User {
     required this.storeId,
   });
 
-  // Helper đọc key không phân biệt hoa thường (Id vs id)
+  // Helper đọc key không phân biệt hoa thường (Id vs id) và xử lý null
   static Object? _readCaseInsensitive(Map map, String key) {
-    // Thử key thường
     if (map.containsKey(key)) return map[key]?.toString() ?? '';
-    // Thử key viết hoa chữ cái đầu
+    // Thử key viết hoa chữ cái đầu (VD: email -> Email)
     String capitalized = key[0].toUpperCase() + key.substring(1);
     return map[capitalized]?.toString() ?? '';
   }
@@ -166,4 +191,21 @@ class AuthResponse {
   factory AuthResponse.fromJson(Map<String, dynamic> json) =>
       _$AuthResponseFromJson(json);
   Map<String, dynamic> toJson() => _$AuthResponseToJson(this);
+}
+
+// ================= GLOBAL HELPERS =================
+
+// Hàm helper "thần thánh" để fix lỗi crash String/int
+// Dùng cho User.id và Customer.id
+Object? _readIdAsString(Map map, String key) {
+  // 1. Thử tìm key chính xác (ví dụ "id")
+  Object? value = map[key];
+
+  // 2. Nếu không có, thử tìm key viết hoa ("Id", "ID")
+  if (value == null) {
+    value = map['Id'] ?? map['ID'];
+  }
+
+  // 3. Convert sang String an toàn
+  return value?.toString() ?? '';
 }

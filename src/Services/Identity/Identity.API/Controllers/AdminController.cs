@@ -6,7 +6,7 @@ using Identity.Domain.Entities;
 using Microsoft.AspNetCore.Identity; // <--- Nhớ thêm thư viện này
 using System.Linq;
 using System.Threading.Tasks;
-
+using Identity.API.Models;
 namespace Identity.API.Controllers
 {
     [Route("api/admin")]
@@ -106,6 +106,56 @@ namespace Identity.API.Controllers
                 .ToListAsync();
 
             return Ok(tenants);
+        }
+
+        // POST: /api/admin/owners
+        [HttpPost("owners")]
+        public async Task<IActionResult> CreateOwner([FromBody] CreateOwnerRequest request)
+        {
+            // 1. Tạo Store (Chỉ điền các trường có trong Store.cs)
+            var newStore = new Store
+            {
+                Id = Guid.NewGuid(),
+                StoreName = request.StoreName,
+                
+                // Vì trong Store.cs các trường này là string (không null)
+                // nên ta phải gán giá trị mặc định để không bị lỗi CS8618
+                Address = "Chưa cập nhật", 
+                Phone = "",
+                TaxCode = "",
+                
+                // Gán null vì mới tạo chưa mua gói
+                SubscriptionPlanId = null, 
+                SubscriptionExpiryDate = DateTime.UtcNow 
+            };
+
+            _context.Stores.Add(newStore);
+            await _context.SaveChangesAsync();
+
+            // 2. Tạo User (Code giữ nguyên)
+            var newUser = new User
+            {
+                UserName = request.Email,
+                Email = request.Email,
+                FullName = request.FullName, // Nhớ dòng này
+                StoreId = newStore.Id,
+                IsActive = true 
+            };
+
+            var result = await _userManager.CreateAsync(newUser, request.Password);
+
+            if (result.Succeeded)
+            {
+                await _userManager.AddToRoleAsync(newUser, "Owner");
+                return Ok(new { message = "Tạo chủ hộ thành công!" });
+            }
+            else
+            {
+                // Rollback: Xóa Store nếu tạo User thất bại
+                _context.Stores.Remove(newStore);
+                await _context.SaveChangesAsync();
+                return BadRequest(result.Errors);
+            }
         }
     }
 }

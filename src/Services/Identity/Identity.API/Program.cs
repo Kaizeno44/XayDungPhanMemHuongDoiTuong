@@ -2,10 +2,12 @@ using Identity.API.Data;
 using Identity.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer; // 👈 Quan trọng cho JWT
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using Microsoft.OpenApi.Models; // 👈 Quan trọng cho Swagger
+using Microsoft.OpenApi.Models;
+using Shared.Kernel.Extensions;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,6 +73,9 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
+// 5. RabbitMQ
+builder.Services.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
+
 // 🔥 6. CẤU HÌNH SWAGGER (HIỆN NÚT Ổ KHÓA) 🔥
 builder.Services.AddSwaggerGen(c =>
 {
@@ -104,8 +109,10 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
 // Đăng ký HttpClient để gọi sang Service khác
 builder.Services.AddHttpClient();
+
 var app = builder.Build();
 
 // --- DATA SEEDING & MIGRATION ---

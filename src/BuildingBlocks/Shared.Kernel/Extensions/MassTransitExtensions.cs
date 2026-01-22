@@ -26,6 +26,7 @@ public static class MassTransitExtensions
                     h.Password("guest");
                 });
 
+                // Tắt yêu cầu License của MassTransit (nếu có)
                 cfg.ConfigureEndpoints(context);
             });
         });

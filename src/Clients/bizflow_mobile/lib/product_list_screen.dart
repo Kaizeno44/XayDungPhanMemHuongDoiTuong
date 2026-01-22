@@ -1,164 +1,51 @@
+import 'package:bizflow_mobile/models.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // Riverpod
 import 'package:intl/intl.dart';
 import 'dart:async';
 import 'dart:math';
-import 'package:signalr_core/signalr_core.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 // --- IMPORTS ---
-import 'package:bizflow_mobile/models.dart';
-import 'package:bizflow_mobile/cart_provider.dart';
+// [MỚI] Import Controller
+import 'package:bizflow_mobile/features/cart/cart_controller.dart';
+import 'package:bizflow_mobile/features/products/product_list_controller.dart';
 import 'package:bizflow_mobile/providers/auth_provider.dart';
-import 'package:bizflow_mobile/core/config/api_config.dart';
-import 'package:bizflow_mobile/core/result.dart';
-
-// 👇 [QUAN TRỌNG] Đã thêm dòng import này để sửa lỗi "isn't a type"
-import 'package:bizflow_mobile/repositories/product_repository.dart';
 
 // --- SCREENS ---
-import 'package:bizflow_mobile/screens/login_screen.dart';
 import 'package:bizflow_mobile/screens/stock_import_history_screen.dart';
 import 'package:bizflow_mobile/product_detail_screen.dart';
 import 'package:bizflow_mobile/cart_screen.dart';
 import 'package:bizflow_mobile/widgets/ai_mic_button.dart';
 
-class ProductListScreen extends StatefulWidget {
+class ProductListScreen extends ConsumerStatefulWidget {
   const ProductListScreen({super.key});
 
   @override
-  State<ProductListScreen> createState() => _ProductListScreenState();
+  ConsumerState<ProductListScreen> createState() => _ProductListScreenState();
 }
 
-class _ProductListScreenState extends State<ProductListScreen> {
+class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
-
-  List<Product> products = [];
-  bool isLoading = true;
-  String? errorMessage;
-  HubConnection? _hubConnection;
-
-  @override
-  void initState() {
-    super.initState();
-    // Gọi fetch products sau khi widget build xong để dùng context an toàn
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fetchProducts();
-    });
-    _initSignalR();
-  }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
-    _hubConnection?.stop();
     super.dispose();
   }
 
-  // --- 1. SIGNALR CONFIGURATION ---
-  Future<void> _initSignalR() async {
-    try {
-      _hubConnection = HubConnectionBuilder()
-          .withUrl(ApiConfig.productHub, HttpConnectionOptions())
-          .withAutomaticReconnect()
-          .build();
-
-      _hubConnection?.onclose(
-        (error) => debugPrint("Connection Closed: $error"),
-      );
-
-      _hubConnection?.on("ReceiveStockUpdate", (arguments) {
-        try {
-          if (arguments == null || arguments.length < 2) return;
-          final String strId = arguments[0].toString();
-          final String strQty = arguments[1].toString();
-          final int productId = int.parse(strId);
-          final double newQuantity = double.parse(strQty);
-
-          if (!mounted) return;
-
-          setState(() {
-            final index = products.indexWhere((p) => p.id == productId);
-            if (index != -1) {
-              products[index] = products[index].copyWith(
-                inventoryQuantity: newQuantity,
-              );
-            }
-          });
-        } catch (e) {
-          debugPrint("SignalR Error: $e");
-        }
-      });
-
-      await _hubConnection?.start();
-      debugPrint("✅ SignalR Connected!");
-    } catch (e) {
-      debugPrint("SignalR Init Error: $e");
-    }
-  }
-
-  // --- 2. DATA FETCHING ---
-  Future<void> _fetchProducts({String keyword = ''}) async {
-    if (!mounted) return;
-
-    setState(() {
-      isLoading = true;
-      errorMessage = null;
-    });
-
-    try {
-      // Gọi Repository từ Provider
-      final repo = context.read<ProductRepository>();
-
-      final result = await repo.getProducts(keyword: keyword);
-
-      if (!mounted) return;
-
-      // Xử lý kết quả trả về (Result Pattern)
-      switch (result) {
-        // Trường hợp THÀNH CÔNG
-        case Success(data: final list):
-          setState(() {
-            products = list;
-            isLoading = false;
-          });
-          break;
-
-        // Trường hợp THẤT BẠI (Mất mạng, lỗi server...)
-        // 👇 [CẢI TIẾN] Đã sửa lỗi crash "UnimplementedError"
-        case Failure(message: final msg):
-          setState(() {
-            errorMessage = msg;
-            isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(msg),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          break;
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        errorMessage = 'Lỗi ngoại lệ: $e';
-        isLoading = false;
-      });
-    }
-  }
-
+  // --- SEARCH LOGIC ---
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      _fetchProducts(keyword: query);
+      // Gọi method search trong Controller
+      ref.read(productListControllerProvider.notifier).search(query);
     });
   }
 
-  // --- 3. HELPER UI ---
+  // --- HELPER UI ---
   Map<String, dynamic> _getProductUI(int id) {
     final colors = [
       Colors.blue,
@@ -180,57 +67,79 @@ class _ProductListScreenState extends State<ProductListScreen> {
     };
   }
 
-  // --- 4. APP BAR ---
+  // --- APP BAR ---
   AppBar _buildAppBar(BuildContext context) {
-    final bool canPop = Navigator.canPop(context);
+    // Lắng nghe trạng thái Auth từ Riverpod để check quyền Owner/Admin
+    final authState = ref.watch(authNotifierProvider);
+    final userRole = (authState.currentUser?.role ?? '').toLowerCase();
+    final isOwnerOrAdmin = userRole == 'owner' || userRole == 'admin';
+
     return AppBar(
       title: const Text('Kho VLXD'),
       centerTitle: true,
       backgroundColor: Colors.blue[800],
       foregroundColor: Colors.white,
-      leading: canPop
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            )
-          : IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: () async {
-                await Provider.of<AuthProvider>(
-                  context,
-                  listen: false,
-                ).logout();
-                if (mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  );
-                }
-              },
-            ),
-      actions: [
-        Consumer<AuthProvider>(
-          builder: (context, auth, child) {
-            final role = (auth.currentUser?.role ?? '').toLowerCase();
-            if (role != 'owner' && role != 'admin') return const SizedBox();
-            return IconButton(
-              icon: const Icon(Icons.history),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const StockImportHistoryScreen(),
+
+      // Nút logout
+      leading: IconButton(
+        icon: const Icon(Icons.logout),
+        tooltip: "Đăng xuất",
+        onPressed: () async {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("Đăng xuất"),
+              content: const Text("Bạn có chắc chắn muốn đăng xuất?"),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text("Hủy"),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text(
+                    "Đồng ý",
+                    style: TextStyle(color: Colors.red),
                   ),
-                );
-              },
-            );
-          },
-        ),
+                ),
+              ],
+            ),
+          );
+
+          if (confirm == true) {
+            await ref.read(authNotifierProvider).logout();
+          }
+        },
+      ),
+
+      actions: [
+        // Nút Lịch sử nhập kho
+        if (isOwnerOrAdmin)
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: "Lịch sử nhập kho",
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const StockImportHistoryScreen(),
+                ),
+              );
+            },
+          ),
+
+        // Nút Giỏ hàng (Có Badge)
         _buildCartButton(),
       ],
     );
   }
 
+  // [CẬP NHẬT] Badge giỏ hàng dùng Riverpod
   Widget _buildCartButton() {
+    // Lắng nghe CartController
+    final cartState = ref.watch(cartControllerProvider);
+    final itemCount = cartState.items.length;
+
     return Stack(
       children: [
         IconButton(
@@ -242,45 +151,43 @@ class _ProductListScreenState extends State<ProductListScreen> {
             );
           },
         ),
-        Positioned(
-          right: 5,
-          top: 5,
-          child: Consumer<CartProvider>(
-            builder: (_, cart, _) => cart.items.isEmpty
-                ? const SizedBox()
-                : Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      '${cart.items.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+        if (itemCount > 0)
+          Positioned(
+            right: 5,
+            top: 5,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                '$itemCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
-        ),
       ],
     );
   }
 
-  // --- 5. MAIN BODY ---
+  // --- MAIN BODY ---
   @override
   Widget build(BuildContext context) {
+    // Lắng nghe danh sách sản phẩm
+    final asyncProducts = ref.watch(productListControllerProvider);
+
     return Scaffold(
       appBar: _buildAppBar(context),
       body: Column(
         children: [
+          // Search Bar
           Container(
             padding: const EdgeInsets.all(12),
             color: Colors.white,
@@ -295,7 +202,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _searchController.clear();
-                          _fetchProducts(keyword: '');
+                          ref
+                              .read(productListControllerProvider.notifier)
+                              .search('');
                         },
                       )
                     : null,
@@ -309,13 +218,73 @@ class _ProductListScreenState extends State<ProductListScreen> {
               ),
             ),
           ),
+
+          // Product List
           Expanded(
             child: Container(
               color: Colors.grey[100],
-              child: RefreshIndicator(
-                onRefresh: () =>
-                    _fetchProducts(keyword: _searchController.text),
-                child: _buildBody(),
+              child: asyncProducts.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, stack) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        "Lỗi tải dữ liệu", // Rút gọn msg lỗi để UI đẹp hơn
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      ElevatedButton(
+                        onPressed: () =>
+                            ref.refresh(productListControllerProvider),
+                        child: const Text("Thử lại"),
+                      ),
+                    ],
+                  ),
+                ),
+                data: (products) {
+                  if (products.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "Không tìm thấy sản phẩm nào",
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    onRefresh: () =>
+                        ref.refresh(productListControllerProvider.future),
+                    child: ListView.builder(
+                      itemCount: products.length,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      itemBuilder: (context, index) =>
+                          _buildProductCard(products[index]),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -323,54 +292,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: const AiMicButton(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (isLoading) return const Center(child: CircularProgressIndicator());
-
-    if (errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: 10),
-            Text(
-              "Lỗi: $errorMessage",
-              style: const TextStyle(color: Colors.red),
-              textAlign: TextAlign.center, // Căn giữa text lỗi
-            ),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: () => _fetchProducts(keyword: _searchController.text),
-              child: const Text("Thử lại"),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (products.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              "Không tìm thấy sản phẩm nào",
-              style: TextStyle(color: Colors.grey[600], fontSize: 16),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: products.length,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemBuilder: (context, index) => _buildProductCard(products[index]),
     );
   }
 
@@ -489,6 +410,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
     );
   }
 
+  // [CẬP NHẬT] Hàm thêm vào giỏ sử dụng CartController
   void _addToCart(Product product) {
     if (product.inventoryQuantity <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -510,10 +432,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
       maxStock: product.inventoryQuantity,
     );
 
-    final result = Provider.of<CartProvider>(
-      context,
-      listen: false,
-    ).addToCart(cartItem);
+    // [QUAN TRỌNG] Gọi logic từ Riverpod Controller
+    final result = ref
+        .read(cartControllerProvider.notifier)
+        .addToCart(cartItem);
 
     if (result == null) {
       ScaffoldMessenger.of(context).showSnackBar(

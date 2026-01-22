@@ -52,6 +52,47 @@ namespace Identity.API.Migrations
                     b.ToTable("Customers");
                 });
 
+            modelBuilder.Entity("Identity.Domain.Entities.Ledger", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReferenceId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("TransactionDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TransactionType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("Ledgers");
+                });
+
             modelBuilder.Entity("Identity.Domain.Entities.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -103,7 +144,7 @@ namespace Identity.API.Migrations
                     b.Property<DateTime>("SubscriptionExpiryDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("SubscriptionPlanId")
+                    b.Property<Guid?>("SubscriptionPlanId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("TaxCode")
@@ -383,13 +424,29 @@ namespace Identity.API.Migrations
                     b.Navigation("Store");
                 });
 
+            modelBuilder.Entity("Identity.Domain.Entities.Ledger", b =>
+                {
+                    b.HasOne("Identity.Domain.Entities.User", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Identity.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Creator");
+
+                    b.Navigation("Store");
+                });
+
             modelBuilder.Entity("Identity.Domain.Entities.Store", b =>
                 {
                     b.HasOne("Identity.Domain.Entities.SubscriptionPlan", "SubscriptionPlan")
                         .WithMany()
-                        .HasForeignKey("SubscriptionPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("SubscriptionPlanId");
 
                     b.Navigation("SubscriptionPlan");
                 });

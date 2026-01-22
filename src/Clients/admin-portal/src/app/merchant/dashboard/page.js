@@ -4,9 +4,11 @@ import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import Link from "next/link";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import axios from "axios";
+import * as signalR from "@microsoft/signalr";
+import { notification } from "antd";
 
 export default function MerchantDashboard() {
   const router = useRouter();
@@ -27,6 +29,62 @@ export default function MerchantDashboard() {
   
   const [loading, setLoading] = useState(true);
 
+  const fetchData = async () => {
+    const token = Cookies.get("accessToken");
+    if (!token) return;
+
+    try {
+      // --- GỌI SONG SONG CÁC API ---
+      const [productRes, dashboardStatsRes, lowStockRes] = await Promise.allSettled([
+        // 1. API Sản phẩm (Tổng số lượng)
+        axios.get("http://localhost:5000/api/products/count", {
+           headers: { Authorization: `Bearer ${token}` }
+        }),
+        // 2. API Dashboard Stats (Doanh thu, Đơn hàng, Biểu đồ, Top 5)
+        axios.get("http://localhost:5000/api/Dashboard/stats", {
+           headers: { Authorization: `Bearer ${token}` }
+        }),
+        // 3. API Low Stock (Cảnh báo tồn kho)
+        axios.get("http://localhost:5000/api/Products/low-stock", {
+           headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      // --- XỬ LÝ DỮ LIỆU ---
+      
+      // 1. Xử lý Số liệu tổng quan & Biểu đồ & Top 5
+      if (dashboardStatsRes.status === 'fulfilled') {
+        const data = dashboardStatsRes.value.data;
+        setRevenueData(data.weeklyRevenue || []);
+        setTopProducts(data.topProducts || []);
+        setSummaryStats(prev => ({
+          ...prev,
+          orders: data.todayOrdersCount || 0,
+          todayRevenue: data.todayRevenue || 0,
+          debt: data.totalDebt || 0
+        }));
+      }
+
+      // 2. Xử lý Tổng số sản phẩm
+      if (productRes.status === 'fulfilled') {
+        setSummaryStats(prev => ({
+          ...prev,
+          products: productRes.value.data.count || 0
+        }));
+      }
+
+      // 3. Xử lý Cảnh báo tồn kho
+      if (lowStockRes.status === 'fulfilled') {
+        setLowStockProducts(lowStockRes.value.data || []);
+      }
+
+    } catch (err) {
+      console.error("Lỗi tải dữ liệu Dashboard:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const token = Cookies.get("accessToken");
     if (!token) {
@@ -34,60 +92,37 @@ export default function MerchantDashboard() {
       return;
     }
 
-    const fetchData = async () => {
-      try {
-        // --- GỌI SONG SONG CÁC API ---
-        const [productRes, dashboardStatsRes, lowStockRes] = await Promise.allSettled([
-          // 1. API Sản phẩm (Tổng số lượng)
-          axios.get("http://localhost:5000/api/products/count", {
-             headers: { Authorization: `Bearer ${token}` }
-          }),
-          // 2. API Dashboard Stats (Doanh thu, Đơn hàng, Biểu đồ, Top 5)
-          axios.get("http://localhost:5000/api/Dashboard/stats", {
-             headers: { Authorization: `Bearer ${token}` }
-          }),
-          // 3. API Low Stock (Cảnh báo tồn kho)
-          axios.get("http://localhost:5000/api/Products/low-stock", {
-             headers: { Authorization: `Bearer ${token}` }
-          })
-        ]);
-
-        // --- XỬ LÝ DỮ LIỆU ---
-        
-        // 1. Xử lý Số liệu tổng quan & Biểu đồ & Top 5
-        if (dashboardStatsRes.status === 'fulfilled') {
-          const data = dashboardStatsRes.value.data;
-          setRevenueData(data.weeklyRevenue || []);
-          setTopProducts(data.topProducts || []);
-          setSummaryStats(prev => ({
-            ...prev,
-            orders: data.todayOrdersCount || 0,
-            todayRevenue: data.todayRevenue || 0,
-            debt: data.totalDebt || 0
-          }));
-        }
-
-        // 2. Xử lý Tổng số sản phẩm
-        if (productRes.status === 'fulfilled') {
-          setSummaryStats(prev => ({
-            ...prev,
-            products: productRes.value.data.count || 0
-          }));
-        }
-
-        // 3. Xử lý Cảnh báo tồn kho
-        if (lowStockRes.status === 'fulfilled') {
-          setLowStockProducts(lowStockRes.value.data || []);
-        }
-
-      } catch (err) {
-        console.error("Lỗi tải dữ liệu Dashboard:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
+
+    // --- CẤU HÌNH SIGNALR ---
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl("http://localhost:5000/hubs/notifications", {
+        accessTokenFactory: () => token
+      })
+      .withAutomaticReconnect()
+      .build();
+
+    connection.start()
+      .then(() => {
+        console.log("Connected to SignalR Hub");
+        connection.invoke("JoinAdminGroup");
+      })
+      .catch(err => console.error("SignalR Connection Error: ", err));
+
+    connection.on("ReceiveNotification", (data) => {
+      notification.success({
+        message: data.title,
+        description: data.message,
+        placement: "topRight",
+        duration: 5
+      });
+      // Refresh data khi có đơn mới
+      fetchData();
+    });
+
+    return () => {
+      connection.stop();
+    };
   }, [router]);
 
   // Cập nhật số liệu vào UI
@@ -198,24 +233,56 @@ export default function MerchantDashboard() {
         </div>
       </div>
 
-      {/* BIỂU ĐỒ DOANH THU (Giữ nguyên code cũ của bạn) */}
+      {/* BIỂU ĐỒ DOANH THU */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-        <h2 className="text-lg font-bold text-gray-900 mb-6">Biểu đồ Doanh thu (7 ngày gần nhất)</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-bold text-gray-900">Biểu đồ Doanh thu (Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()})</h2>
+          <div className="text-sm text-gray-500">
+            Tổng doanh thu: <span className="font-bold text-blue-600">
+              {new Intl.NumberFormat('vi-VN').format(revenueData.reduce((sum, item) => sum + item.amount, 0))} đ
+            </span>
+          </div>
+        </div>
         <div className="h-80 w-full">
           {loading ? (
             <div className="flex items-center justify-center h-full text-gray-500">Đang tải dữ liệu...</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="dayName" />
-                <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
+              <AreaChart data={revenueData}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="dayName" 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{fill: '#9ca3af', fontSize: 12}}
+                  interval={Math.floor(revenueData.length / 10)}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{fill: '#9ca3af', fontSize: 12}}
+                  tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : new Intl.NumberFormat('vi-VN').format(value)} 
+                />
                 <Tooltip 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                   formatter={(value) => [new Intl.NumberFormat('vi-VN').format(value) + ' đ', 'Doanh thu']}
                 />
-                <Legend />
-                <Bar dataKey="amount" name="Doanh thu" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Area 
+                  type="monotone" 
+                  dataKey="amount" 
+                  name="Doanh thu" 
+                  stroke="#3b82f6" 
+                  strokeWidth={3}
+                  fillOpacity={1} 
+                  fill="url(#colorRevenue)" 
+                />
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -256,22 +323,30 @@ export default function MerchantDashboard() {
   );
 }
 
-function QuickActionCard({ href, color, icon, title, desc }) {
+function QuickActionCard({ href, color, icon, title, desc, external }) {
   const colorClasses = {
     blue: "border-blue-500 hover:shadow-blue-100",
     green: "border-green-500 hover:shadow-green-100",
     purple: "border-purple-500 hover:shadow-purple-100",
   };
 
+  const content = (
+    <div className={`bg-white p-5 rounded-xl border border-gray-100 border-l-4 shadow-sm hover:shadow-lg transition-all cursor-pointer group ${colorClasses[color]}`}>
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-2xl group-hover:scale-110 transition-transform">{icon}</span>
+        <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+      </div>
+      <p className="text-gray-500 text-sm pl-9">{desc}</p>
+    </div>
+  );
+
+  if (external) {
+    return <a href={href} target="_blank" rel="noopener noreferrer">{content}</a>;
+  }
+
   return (
     <Link href={href}>
-      <div className={`bg-white p-5 rounded-xl border border-gray-100 border-l-4 shadow-sm hover:shadow-lg transition-all cursor-pointer group ${colorClasses[color]}`}>
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-2xl group-hover:scale-110 transition-transform">{icon}</span>
-          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
-        </div>
-        <p className="text-gray-500 text-sm pl-9">{desc}</p>
-      </div>
+      {content}
     </Link>
   );
 }

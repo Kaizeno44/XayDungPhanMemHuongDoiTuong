@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../product_list_screen.dart';
+// import '../product_list_screen.dart'; // 👈 Không cần import file này nữa
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -27,16 +27,21 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     try {
+      // 1. Gọi hàm login
       final success = await authProvider.login(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
+      // 2. [QUAN TRỌNG] Chỉ cần kiểm tra success.
+      // KHÔNG ĐƯỢC gọi Navigator.push ở đây.
+      // AuthProvider sẽ báo cho main.dart biết và tự chuyển trang.
       if (success && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProductListScreen()),
+        // Để trống hoặc log ra console
+        print(
+          "✅ Login UI: Đăng nhập thành công, chờ main.dart chuyển hướng...",
         );
       }
     } catch (e) {
@@ -53,6 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ... (Giữ nguyên phần giao diện build bên dưới của bạn) ...
+    // ... Copy y nguyên phần build cũ vào đây ...
     final isLoading = context.watch<AuthProvider>().isLoading;
 
     return Scaffold(
@@ -65,11 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  Icons.business_center,
-                  size: 80,
-                  color: Colors.blue,
-                ),
+                const Icon(Icons.business_center, size: 80, color: Colors.blue),
                 const SizedBox(height: 16),
                 const Text(
                   'BizFlow Mobile',
@@ -90,7 +93,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return 'Vui lòng nhập email';
+                    if (value == null || value.isEmpty) {
+                      return 'Vui lòng nhập email';
+                    }
                     if (!value.contains('@')) return 'Email không hợp lệ';
                     return null;
                   },
@@ -104,17 +109,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
                       ),
                       onPressed: () {
-                        setState(() => _isPasswordVisible = !_isPasswordVisible);
+                        setState(
+                          () => _isPasswordVisible = !_isPasswordVisible,
+                        );
                       },
                     ),
                     border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return 'Vui lòng nhập mật khẩu';
-                    if (value.length < 6) return 'Mật khẩu phải ít nhất 6 ký tự';
+                    if (value == null || value.isEmpty) {
+                      return 'Vui lòng nhập mật khẩu';
+                    }
+                    if (value.length < 6) {
+                      return 'Mật khẩu phải ít nhất 6 ký tự';
+                    }
                     return null;
                   },
                 ),
@@ -135,7 +148,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         )
                       : const Text(
                           'ĐĂNG NHẬP',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                 ),
               ],

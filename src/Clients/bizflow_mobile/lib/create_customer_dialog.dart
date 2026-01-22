@@ -1,6 +1,5 @@
 // lib/screens/create_customer_dialog.dart
 import 'package:flutter/material.dart';
-import '../models.dart';
 import '../order_service.dart';
 
 class CreateCustomerDialog extends StatefulWidget {

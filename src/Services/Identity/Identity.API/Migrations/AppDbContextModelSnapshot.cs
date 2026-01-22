@@ -52,33 +52,6 @@ namespace Identity.API.Migrations
                     b.ToTable("Customers");
                 });
 
-            modelBuilder.Entity("Identity.Domain.Entities.Product", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("StoreId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StoreId");
-
-                    b.ToTable("Products");
-                });
-
             modelBuilder.Entity("Identity.Domain.Entities.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -281,8 +254,12 @@ namespace Identity.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<DateTime>("LastUpdated")
+                    b.Property<DateTime>("LastActiveAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -396,17 +373,6 @@ namespace Identity.API.Migrations
                 });
 
             modelBuilder.Entity("Identity.Domain.Entities.Customer", b =>
-                {
-                    b.HasOne("Identity.Domain.Entities.Store", "Store")
-                        .WithMany()
-                        .HasForeignKey("StoreId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Store");
-                });
-
-            modelBuilder.Entity("Identity.Domain.Entities.Product", b =>
                 {
                     b.HasOne("Identity.Domain.Entities.Store", "Store")
                         .WithMany()

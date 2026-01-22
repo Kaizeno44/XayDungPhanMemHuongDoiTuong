@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
 import 'cart_provider.dart';
 import 'models.dart';
-import 'core/api_service.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'core/api_service.dart'; // Import ApiService mới
+import 'core/service_locator.dart';
 import 'screens/stock_import_screen.dart';
 import 'providers/auth_provider.dart';
-import 'product_service.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
@@ -19,31 +20,39 @@ class ProductDetailScreen extends StatefulWidget {
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
-  final ApiService _apiService = ApiService();
-  final ProductService _productService = ProductService(); // Thêm service để lấy data mới
+  // [CẢI TIẾN] Không tự khởi tạo ApiService nữa, sẽ lấy từ Provider
+
   ProductUnit? _selectedUnit;
   int _quantity = 1;
   String _stockMessage = '';
-  double _currentInventory = 0; // Biến local để cập nhật UI nhanh
+  double _currentInventory = 0;
 
   @override
   void initState() {
     super.initState();
     _currentInventory = widget.product.inventoryQuantity;
-    // Chọn đơn vị mặc định (Base Unit)
+
+    // Chọn đơn vị cơ bản mặc định
     _selectedUnit = widget.product.productUnits.firstWhere(
       (unit) => unit.isBaseUnit,
       orElse: () => widget.product.productUnits.first,
     );
-    _checkStock();
+
+    // Gọi kiểm tra tồn kho sau khi widget đã build xong để có context an toàn
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkStock();
+    });
   }
 
   Future<void> _refreshProductData() async {
     try {
-      final updatedProduct = await _productService.getProductById(widget.product.id);
+      final updatedProduct = await ServiceLocator.productRepo.getProductById(
+        widget.product.id,
+      );
+
       if (mounted) {
         setState(() {
-          _currentInventory = updatedProduct.inventoryQuantity;
+          _currentInventory = updatedProduct.inventoryQuantity!;
         });
       }
     } catch (e) {
@@ -53,22 +62,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _checkStock() async {
     if (_selectedUnit == null) return;
+    if (!mounted) return;
 
     try {
-      final result = await _apiService.simpleCheckStock(
-        widget.product.id,
-        _selectedUnit!.id,
-        _quantity.toDouble(),
-      );
+      // [CẢI TIẾN] Lấy ApiService từ Provider
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // [SỬA LỖI] Gọi qua ProductService (Chopper) thay vì hàm thủ công cũ
+      final response = await apiService.productService.checkStock({
+        'requests': [
+          {
+            'productId': widget.product.id,
+            'unitId': _selectedUnit!.id,
+            'quantity': _quantity,
+          },
+        ],
+      });
+
       if (mounted) {
-        setState(() {
-          _stockMessage = result.message;
-        });
+        if (response.isSuccessful) {
+          // Parse kết quả từ API (xử lý cả trường hợp trả về List hoặc Map)
+          final dynamic body = response.body;
+          SimpleCheckStockResult result;
+
+          if (body is List && body.isNotEmpty) {
+            result = SimpleCheckStockResult.fromJson(body.first);
+          } else if (body is Map<String, dynamic>) {
+            result = SimpleCheckStockResult.fromJson(body);
+          } else {
+            throw Exception("Dữ liệu tồn kho không hợp lệ");
+          }
+
+          setState(() {
+            _stockMessage = result.message;
+          });
+        } else {
+          setState(() {
+            _stockMessage =
+                'Không thể kiểm tra tồn kho (Lỗi ${response.statusCode})';
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _stockMessage = 'Lỗi kiểm tra tồn kho: $e';
+          _stockMessage = 'Lỗi kết nối: $e';
         });
       }
     }
@@ -76,73 +114,87 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   void _updateQuantity(int change) {
     setState(() {
-      _quantity = (_quantity + change).clamp(1, 999); // Giới hạn số lượng
+      _quantity = (_quantity + change).clamp(1, 999);
     });
     _checkStock();
   }
 
   Future<void> _addToCart() async {
     if (_selectedUnit == null) return;
-
-    // 1. Kiểm tra tồn kho qua API trước
-    final stockResult = await _apiService.simpleCheckStock(
-      widget.product.id,
-      _selectedUnit!.id,
-      _quantity.toDouble(),
-    );
-
     if (!mounted) return;
 
-    // 👇 ĐÃ SỬA: Dùng .isAvailable thay vì .isEnough
-    if (!stockResult.isAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(stockResult.message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
+    // 1. Kiểm tra tồn kho trước khi thêm
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
 
-    // 2. Tạo CartItem
-    final cartItem = CartItem(
-      productId: widget.product.id,
-      productName: widget.product.name,
-      unitId: _selectedUnit!.id,
-      unitName: _selectedUnit!.unitName,
-      price: _selectedUnit!.price,
-      quantity: _quantity,
-      maxStock: widget.product.inventoryQuantity,
+      final response = await apiService.productService.checkStock({
+        'requests': [
+          {
+            'productId': widget.product.id,
+            'unitId': _selectedUnit!.id,
+            'quantity': _quantity,
+          },
+        ],
+      });
+
+      if (!response.isSuccessful) {
+        _showSnackBar('Lỗi khi kiểm tra tồn kho', isError: true);
+        return;
+      }
+
+      final dynamic body = response.body;
+      SimpleCheckStockResult stockResult;
+
+      if (body is List && body.isNotEmpty) {
+        stockResult = SimpleCheckStockResult.fromJson(body.first);
+      } else {
+        stockResult = SimpleCheckStockResult.fromJson(body);
+      }
+
+      if (!stockResult.isAvailable) {
+        _showSnackBar(stockResult.message, isError: true);
+        return;
+      }
+
+      // 2. Thêm vào giỏ hàng
+      final cartItem = CartItem(
+        productId: widget.product.id,
+        productName: widget.product.name,
+        unitId: _selectedUnit!.id,
+        unitName: _selectedUnit!.unitName,
+        price: _selectedUnit!.price,
+        quantity: _quantity,
+        maxStock: widget.product.inventoryQuantity,
+      );
+
+      final errorMsg = Provider.of<CartProvider>(
+        // ignore: use_build_context_synchronously
+        context,
+        listen: false,
+      ).addToCart(cartItem);
+
+      if (errorMsg == null) {
+        _showSnackBar(
+          'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
+          isError: false,
+        );
+      } else {
+        _showSnackBar(errorMsg, isError: true);
+      }
+    } catch (e) {
+      _showSnackBar('Đã xảy ra lỗi: $e', isError: true);
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
     );
-
-    // 3. Gọi CartProvider để thêm vào giỏ (và nhận về lỗi nếu có)
-    final errorMsg = Provider.of<CartProvider>(
-      context,
-      listen: false,
-    ).addToCart(cartItem);
-
-    if (errorMsg == null) {
-      // Thành công
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Đã thêm $_quantity ${_selectedUnit!.unitName} ${widget.product.name} vào giỏ!',
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    } else {
-      // Thất bại (do logic trong CartProvider chặn)
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
   }
 
   @override
@@ -160,7 +212,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Ảnh sản phẩm
             Center(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -168,14 +219,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   width: 200,
                   height: 200,
                   color: Colors.grey[200],
-                  child: widget.product.imageUrl != null &&
+                  child:
+                      widget.product.imageUrl != null &&
                           widget.product.imageUrl!.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: widget.product.imageUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
                           errorWidget: (context, url, error) => Icon(
                             Icons.image,
                             size: 100,
@@ -187,18 +238,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Tên sản phẩm
             Text(
               widget.product.name,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-
-            // Khu vực Quản lý kho (Chỉ dành cho Owner)
+            // --- PHẦN QUẢN LÝ KHO (Chỉ hiện với Owner) ---
             Consumer<AuthProvider>(
               builder: (context, auth, child) {
-                if (auth.currentUser?.role != 'Owner') return const SizedBox();
+                // Kiểm tra null an toàn hơn cho role
+                final role = auth.currentUser?.role.toLowerCase() ?? '';
+                if (role != 'owner' && role != 'admin') return const SizedBox();
+
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   padding: const EdgeInsets.all(12),
@@ -225,7 +276,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ),
                             Text(
                               'Hiện có: ${_currentInventory.toStringAsFixed(0)} ${widget.product.unitName}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -235,12 +288,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => StockImportScreen(product: widget.product),
+                              builder: (context) =>
+                                  StockImportScreen(product: widget.product),
                             ),
                           );
                           if (result == true) {
                             _checkStock();
-                            _refreshProductData(); // Lấy số lượng mới từ server
+                            _refreshProductData();
                           }
                         },
                         style: ElevatedButton.styleFrom(
@@ -255,15 +309,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 );
               },
             ),
-
-            // Mô tả
             Text(
               widget.product.description ?? 'Không có mô tả.',
               style: TextStyle(fontSize: 16, color: Colors.grey[700]),
             ),
             const SizedBox(height: 24),
-
-            // Chọn đơn vị tính
             const Text(
               'Đơn vị tính:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -295,8 +345,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               }).toList(),
             ),
             const SizedBox(height: 16),
-
-            // Giá
             if (_selectedUnit != null)
               Text(
                 'Giá: ${currencyFormat.format(_selectedUnit!.price)} / ${_selectedUnit!.unitName}',
@@ -307,8 +355,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ),
             const SizedBox(height: 24),
-
-            // Chọn số lượng
             const Text(
               'Số lượng:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -348,8 +394,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ],
             ),
             const SizedBox(height: 32),
-
-            // Nút Thêm vào giỏ
             Center(
               child: ElevatedButton.icon(
                 onPressed: _addToCart,

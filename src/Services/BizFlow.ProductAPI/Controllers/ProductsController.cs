@@ -63,7 +63,15 @@ namespace BizFlow.ProductAPI.Controllers
             });
         }
 
-        // 1.2 Lấy chi tiết 1 sản phẩm
+        // 1.2 Lấy tổng số lượng sản phẩm
+        [HttpGet("count")]
+        public async Task<IActionResult> GetProductCount()
+        {
+            var count = await _context.Products.CountAsync();
+            return Ok(new { count });
+        }
+
+        // 1.3 Lấy chi tiết 1 sản phẩm
         [HttpGet("{id}")]
         public async Task<IActionResult> GetProductById(int id)
         {
@@ -294,6 +302,26 @@ namespace BizFlow.ProductAPI.Controllers
                 await transaction.RollbackAsync();
                 return StatusCode(500, new { message = "Lỗi hệ thống: " + ex.Message });
             }
+        }
+
+        // 3.3 Lấy danh sách sản phẩm sắp hết hàng (Cảnh báo tồn kho)
+        [HttpGet("low-stock")]
+        public async Task<IActionResult> GetLowStockProducts([FromQuery] double threshold = 10)
+        {
+            var lowStockProducts = await _context.Products
+                .Include(p => p.Inventory)
+                .Where(p => p.Inventory.Quantity <= threshold)
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.Sku,
+                    CurrentStock = p.Inventory.Quantity
+                })
+                .OrderBy(p => p.CurrentStock)
+                .ToListAsync();
+
+            return Ok(lowStockProducts);
         }
     }
 }

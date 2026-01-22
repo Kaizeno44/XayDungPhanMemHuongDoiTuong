@@ -7,19 +7,18 @@ class ApiConfig {
   static const String _host = "10.0.2.2";
 
   // 2. Định nghĩa Base URL cho từng Service (Microservices)
-  static const String productBaseUrl =
-      "http://$_host:5002"; // Service Sản phẩm
+  static const String productBaseUrl = "http://$_host:5002"; // Service Sản phẩm
   static const String orderBaseUrl =
       "http://$_host:5103"; // Service Đơn hàng & Khách
   static const String identityBaseUrl =
-      "http://$_host:5000"; // Service Định danh (Auth)
+      "http://$_host:5001"; // Service Định danh (Auth)
 
   // 3. Định nghĩa các Endpoints (Đường dẫn cụ thể)
 
   // --- Nhóm Product ---
   static const String products = "$productBaseUrl/api/Products";
   static const String stockImports = "$productBaseUrl/api/StockImports";
-  static const String productHub = "$productBaseUrl/hubs/products"; // URL cho Product SignalR Hub
+  static const String productHub = "$productBaseUrl/hubs/products";
 
   // --- Nhóm Order & Customer ---
   static const String customers = "$orderBaseUrl/api/Customers";

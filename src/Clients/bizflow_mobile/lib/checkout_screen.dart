@@ -230,7 +230,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                           ),
                           isExpanded: true,
-                          value: selectedCustomerId,
+                          initialValue: selectedCustomerId,
                           hint: const Text("Khách lẻ"),
                           items: customers
                               .map(
@@ -323,9 +323,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               title: const Text("Tiền mặt"),
               subtitle: const Text("Thanh toán ngay"),
               value: "Cash",
+              // ignore: deprecated_member_use
               groupValue: selectedPaymentMethod,
               activeColor: Colors.green,
               secondary: const Icon(Icons.money, color: Colors.green),
+              // ignore: deprecated_member_use
               onChanged: (val) =>
                   setState(() => selectedPaymentMethod = val.toString()),
             ),
@@ -333,12 +335,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               title: const Text("Ghi nợ"),
               subtitle: const Text("Thêm vào công nợ"),
               value: "Debt",
+              // ignore: deprecated_member_use
               groupValue: selectedPaymentMethod,
               activeColor: Colors.red,
               secondary: const Icon(
                 Icons.account_balance_wallet,
                 color: Colors.red,
               ),
+              // ignore: deprecated_member_use
               onChanged: (val) =>
                   setState(() => selectedPaymentMethod = val.toString()),
             ),

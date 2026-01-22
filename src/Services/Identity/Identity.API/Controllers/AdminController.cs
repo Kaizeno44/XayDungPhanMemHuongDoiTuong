@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Identity.API.Data;
 using Identity.Domain.Entities;
+using Microsoft.AspNetCore.Identity; // <--- Nhớ thêm thư viện này
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -13,13 +14,75 @@ namespace Identity.API.Controllers
     public class AdminController : ControllerBase
     {
         private readonly AppDbContext _context;
+        // Thêm UserManager để quản lý User
+        private readonly UserManager<User> _userManager; 
 
-        public AdminController(AppDbContext context)
+        // Inject thêm UserManager vào Constructor
+        public AdminController(AppDbContext context, UserManager<User> userManager)
         {
             _context = context;
+            _userManager = userManager;
         }
 
-        // GET: api/admin/tenants
+        // ==========================================
+        // API 1: Lấy danh sách USER theo Role (CẦN THÊM CÁI NÀY)
+        // Frontend gọi: GET /api/admin/users?role=Owner
+        // ==========================================
+        [HttpGet("users")]
+        public async Task<IActionResult> GetUsersByRole([FromQuery] string role)
+        {
+            // 1. Lấy danh sách User thuộc Role (ví dụ "Owner")
+            var users = await _userManager.GetUsersInRoleAsync(role);
+
+            // 2. Map dữ liệu trả về
+            var result = new List<object>();
+            foreach (var user in users)
+            {
+                // Lấy tên cửa hàng nếu có
+                var storeName = "Chưa có cửa hàng";
+                if (user.StoreId != null)
+                {
+                    var store = await _context.Stores.FindAsync(user.StoreId);
+                    if (store != null) storeName = store.StoreName;
+                }
+
+                result.Add(new
+                {
+                    id = user.Id,
+                    fullName = user.FullName,
+                    email = user.Email,
+                    storeName = storeName, // Hiển thị: "Vật Liệu Xây Dựng Ba Tèo"
+                    status = user.IsActive ? "Active" : "Locked"
+                });
+            }
+
+            return Ok(result);
+        }
+
+        // ==========================================
+        // API 2: Khóa/Mở khóa User (SỬA LẠI CHÚT CHO CHUẨN)
+        // Frontend gọi: PUT /api/admin/users/{id}/status
+        // ==========================================
+        [HttpPut("users/{id}/status")] // Đổi thành PUT cho đúng chuẩn REST
+        public async Task<IActionResult> ToggleUserStatus(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound("Không tìm thấy User này");
+
+            user.IsActive = !user.IsActive; // Đảo ngược trạng thái
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new 
+            { 
+                message = user.IsActive ? "Đã mở khóa tài khoản" : "Đã khóa tài khoản", 
+                newStatus = user.IsActive 
+            });
+        }
+
+        // ==========================================
+        // API 3: Lấy danh sách Tenant (GIỮ NGUYÊN CỦA BẠN - Rất tốt)
+        // Dùng cho trang "Quản lý Cửa hàng" sau này
+        // ==========================================
         [HttpGet("tenants")]
         public async Task<IActionResult> GetAllTenants()
         {
@@ -33,38 +96,16 @@ namespace Identity.API.Controllers
                     Phone = s.Phone,
                     Address = s.Address,
                     TaxCode = s.TaxCode,
-                    
                     PlanName = s.SubscriptionPlan != null ? s.SubscriptionPlan.Name : "Chưa đăng ký",
-                    
-                    // 👇 GIẢI PHÁP SỬA LỖI TRIỆT ĐỂ (Dòng vàng biến mất 100%)
-                    // Logic: Lọc ông chủ -> Chỉ lấy cái Tên -> Lấy cái đầu tiên -> Nếu null thì lấy text mặc định
                     OwnerName = s.Users.Where(u => u.IsOwner)
                                        .Select(u => u.FullName)
                                        .FirstOrDefault() ?? "Chưa có chủ",
-
                     UserCount = s.Users.Count,
                     ExpiryDate = s.SubscriptionExpiryDate
                 })
                 .ToListAsync();
 
             return Ok(tenants);
-        }
-
-        // POST: api/admin/users/{id}/toggle-active
-        [HttpPost("users/{id}/toggle-active")]
-        public async Task<IActionResult> ToggleUserActive(Guid id)
-        {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null) return NotFound("Không tìm thấy User này");
-
-            user.IsActive = !user.IsActive;
-            await _context.SaveChangesAsync();
-
-            return Ok(new 
-            { 
-                Message = user.IsActive ? "Đã mở khóa tài khoản" : "Đã khóa tài khoản", 
-                Status = user.IsActive 
-            });
         }
     }
 }

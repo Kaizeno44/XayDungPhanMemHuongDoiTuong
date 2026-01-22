@@ -1,15 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Table, Card, Typography, Tag, message, Button, Space } from "antd";
+import { Table, Card, Typography, Tag, message, Button, Space, Modal, Descriptions, Divider } from "antd";
 import { ReloadOutlined, EyeOutlined } from "@ant-design/icons";
 import axios from "axios";
 import Cookies from "js-cookie";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     fetchOrders();
@@ -28,6 +31,23 @@ export default function OrdersPage() {
       message.error("Không thể tải danh sách đơn hàng.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOrderDetail = async (id) => {
+    setDetailLoading(true);
+    try {
+      const token = Cookies.get("accessToken");
+      const response = await axios.get(`http://localhost:5000/api/orders/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSelectedOrder(response.data);
+      setIsModalVisible(true);
+    } catch (err) {
+      console.error("Lỗi tải chi tiết:", err);
+      message.error("Không thể tải chi tiết đơn hàng. Vui lòng đảm bảo BizFlow.OrderAPI đã được khởi động lại với code mới.");
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -72,8 +92,48 @@ export default function OrdersPage() {
       title: "Thao tác",
       key: "action",
       render: (_, record) => (
-        <Button icon={<EyeOutlined />}>Chi tiết</Button>
+        <Button 
+          icon={<EyeOutlined />} 
+          onClick={() => fetchOrderDetail(record.id)}
+          loading={detailLoading && selectedOrder?.id === record.id}
+        >
+          Chi tiết
+        </Button>
       ),
+    },
+  ];
+
+  const itemColumns = [
+    { 
+      title: "Sản phẩm", 
+      dataIndex: "productId", 
+      key: "productId",
+      render: (id, record) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>ID: {id}</Text>
+          <Text type="secondary" size="small">Đơn vị: {record.unitName}</Text>
+        </Space>
+      )
+    },
+    { 
+      title: "Số lượng", 
+      dataIndex: "quantity", 
+      key: "quantity",
+      align: "right"
+    },
+    { 
+      title: "Đơn giá", 
+      dataIndex: "unitPrice", 
+      key: "unitPrice",
+      align: "right",
+      render: (val) => `${val?.toLocaleString("vi-VN")} đ`
+    },
+    { 
+      title: "Thành tiền", 
+      dataIndex: "total", 
+      key: "total",
+      align: "right",
+      render: (val) => <Text strong>{val?.toLocaleString("vi-VN")} đ</Text>
     },
   ];
 
@@ -92,6 +152,48 @@ export default function OrdersPage() {
           loading={loading}
         />
       </Card>
+
+      <Modal
+        title={`Chi tiết đơn hàng: ${selectedOrder?.orderCode}`}
+        open={isModalVisible}
+        onCancel={() => setIsModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setIsModalVisible(false)}>Đóng</Button>
+        ]}
+        width={800}
+      >
+        {selectedOrder && (
+          <>
+            <Descriptions bordered column={2}>
+              <Descriptions.Item label="Mã đơn">{selectedOrder.orderCode}</Descriptions.Item>
+              <Descriptions.Item label="Ngày tạo">{new Date(selectedOrder.orderDate).toLocaleString("vi-VN")}</Descriptions.Item>
+              <Descriptions.Item label="Thanh toán">
+                <Tag color={selectedOrder.paymentMethod === "Debt" ? "red" : "green"}>
+                  {selectedOrder.paymentMethod === "Debt" ? "Ghi nợ" : "Tiền mặt"}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Trạng thái">
+                <Tag color="blue">{selectedOrder.status}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Tổng cộng" span={2}>
+                <Text type="danger" strong style={{ fontSize: 18 }}>
+                  {selectedOrder.totalAmount?.toLocaleString("vi-VN")} đ
+                </Text>
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Divider orientation="left">Danh sách sản phẩm</Divider>
+            
+            <Table
+              dataSource={selectedOrder.orderItems}
+              columns={itemColumns}
+              pagination={false}
+              rowKey="id"
+              size="small"
+            />
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

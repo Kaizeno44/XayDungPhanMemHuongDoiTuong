@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import Link from "next/link";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import axios from "axios";
 import * as signalR from "@microsoft/signalr";
@@ -233,24 +233,56 @@ export default function MerchantDashboard() {
         </div>
       </div>
 
-      {/* BIỂU ĐỒ DOANH THU (Giữ nguyên code cũ của bạn) */}
+      {/* BIỂU ĐỒ DOANH THU */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-        <h2 className="text-lg font-bold text-gray-900 mb-6">Biểu đồ Doanh thu (7 ngày gần nhất)</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-bold text-gray-900">Biểu đồ Doanh thu (Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()})</h2>
+          <div className="text-sm text-gray-500">
+            Tổng doanh thu: <span className="font-bold text-blue-600">
+              {new Intl.NumberFormat('vi-VN').format(revenueData.reduce((sum, item) => sum + item.amount, 0))} đ
+            </span>
+          </div>
+        </div>
         <div className="h-80 w-full">
           {loading ? (
             <div className="flex items-center justify-center h-full text-gray-500">Đang tải dữ liệu...</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="dayName" />
-                <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
+              <AreaChart data={revenueData}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="dayName" 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{fill: '#9ca3af', fontSize: 12}}
+                  interval={Math.floor(revenueData.length / 10)}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{fill: '#9ca3af', fontSize: 12}}
+                  tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : new Intl.NumberFormat('vi-VN').format(value)} 
+                />
                 <Tooltip 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                   formatter={(value) => [new Intl.NumberFormat('vi-VN').format(value) + ' đ', 'Doanh thu']}
                 />
-                <Legend />
-                <Bar dataKey="amount" name="Doanh thu" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Area 
+                  type="monotone" 
+                  dataKey="amount" 
+                  name="Doanh thu" 
+                  stroke="#3b82f6" 
+                  strokeWidth={3}
+                  fillOpacity={1} 
+                  fill="url(#colorRevenue)" 
+                />
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </div>

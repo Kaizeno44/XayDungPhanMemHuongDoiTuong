@@ -17,7 +17,19 @@ export default function EmployeesPage() {
   const fetchEmployees = async () => {
     try {
       const res = await api.get("/users");
-      setEmployees(res.data);
+      
+      // 1. Lọc bỏ tài khoản SuperAdmin
+      // 2. Sắp xếp: Owner luôn nằm trên Employee
+      const processedData = res.data
+        .filter(user => user.role?.toLowerCase() !== "superadmin")
+        .sort((a, b) => {
+          const roleOrder = { "owner": 1, "admin": 2, "employee": 3 };
+          const orderA = roleOrder[a.role?.toLowerCase()] || 99;
+          const orderB = roleOrder[b.role?.toLowerCase()] || 99;
+          return orderA - orderB;
+        });
+
+      setEmployees(processedData);
     } catch (err) {
       console.error("Lỗi tải nhân viên:", err);
       message.error("Không tải được danh sách nhân viên!");
@@ -58,21 +70,34 @@ export default function EmployeesPage() {
       align: "right",
       render: (_, record) => {
         const isSuperAdmin = record.role === "SuperAdmin";
+        const isOwner = record.role === "Owner";
+        
+        const handleDelete = async () => {
+          try {
+            await api.delete(`/users/${record.id}`);
+            message.success("Đã xóa nhân viên thành công!");
+            fetchEmployees(); // Tải lại danh sách
+          } catch (err) {
+            console.error("Lỗi khi xóa:", err);
+            message.error(err.response?.data?.message || "Không thể xóa nhân viên!");
+          }
+        };
+
         return (
           <Popconfirm
             title="Xóa nhân viên"
-            description={isSuperAdmin ? "Không thể xóa Quản trị viên hệ thống" : "Bạn có chắc chắn muốn xóa nhân viên này không?"}
-            onConfirm={() => !isSuperAdmin && message.info("Chức năng xóa đang được phát triển")}
+            description={isSuperAdmin || isOwner ? `Không thể xóa ${record.role}` : "Bạn có chắc chắn muốn xóa nhân viên này không?"}
+            onConfirm={handleDelete}
             okText="Có"
             cancelText="Không"
-            disabled={isSuperAdmin}
+            disabled={isSuperAdmin || isOwner}
           >
             <Button 
               type="text" 
               danger 
               icon={<DeleteOutlined />} 
-              disabled={isSuperAdmin}
-              title={isSuperAdmin ? "Không có quyền xóa Quản trị viên" : ""}
+              disabled={isSuperAdmin || isOwner}
+              title={isSuperAdmin || isOwner ? `Không có quyền xóa ${record.role}` : ""}
             >
               Xóa
             </Button>

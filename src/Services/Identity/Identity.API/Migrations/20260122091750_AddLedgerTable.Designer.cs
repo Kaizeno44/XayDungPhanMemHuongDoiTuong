@@ -3,6 +3,7 @@ using System;
 using Identity.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Identity.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260122091750_AddLedgerTable")]
+    partial class AddLedgerTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -144,7 +147,7 @@ namespace Identity.API.Migrations
                     b.Property<DateTime>("SubscriptionExpiryDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("SubscriptionPlanId")
+                    b.Property<Guid>("SubscriptionPlanId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("TaxCode")
@@ -446,7 +449,9 @@ namespace Identity.API.Migrations
                 {
                     b.HasOne("Identity.Domain.Entities.SubscriptionPlan", "SubscriptionPlan")
                         .WithMany()
-                        .HasForeignKey("SubscriptionPlanId");
+                        .HasForeignKey("SubscriptionPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("SubscriptionPlan");
                 });

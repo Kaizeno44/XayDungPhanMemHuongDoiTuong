@@ -33,7 +33,7 @@ export default function CreateOwnerPage() {
       
       // Sửa Port về 5000 (Gateway) để thống nhất
       await axios.post(
-        "http://localhost:5000/api/users", 
+        "http://localhost:5000/api/admin/owners", 
         {
           fullName: formData.fullName,
           email: formData.email,

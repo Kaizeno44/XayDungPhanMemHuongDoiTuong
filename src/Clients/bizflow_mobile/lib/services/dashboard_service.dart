@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 import '../models/dashboard_stats.dart';
 import '../core/config/api_config.dart';
 
-class ReportService {
-  // 1. Hàm đọc số thực an toàn (Chống lỗi null/string)
+class DashboardService {
+  // 1. Hàm đọc số thực an toàn (Bất chấp null, string, int)
   double _parseSafeDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
@@ -20,9 +20,10 @@ class ReportService {
     return 0;
   }
 
-  Future<DashboardStats> getOwnerDashboardStats() async {
+  Future<DashboardStats> getStats(String storeId) async {
     try {
-      final uri = Uri.parse(ApiConfig.dashboardStats);
+      // Gọi API lấy thống kê
+      final uri = Uri.parse('${ApiConfig.dashboardStats}?storeId=$storeId');
       print("📡 Calling Dashboard API: $uri");
 
       final response = await http.get(uri, headers: ApiConfig.headers);
@@ -31,15 +32,16 @@ class ReportService {
         final data = json.decode(response.body);
 
         return DashboardStats(
-          // Map dữ liệu an toàn
+          // Mapping an toàn từng trường
           todayRevenue: _parseSafeDouble(
             data['todayRevenue'] ?? data['TodayRevenue'],
           ),
 
-          // [SỬA LỖI TẠI ĐÂY]: Đổi 'todayOrders' thành 'todayOrdersCount'
-          // Backend trả về: TodayOrdersCount
+          // Ưu tiên tìm 'todayOrdersCount' (từ backend)
           todayOrdersCount: _parseSafeInt(
-            data['todayOrdersCount'] ?? data['TodayOrdersCount'],
+            data['todayOrdersCount'] ??
+                data['TodayOrdersCount'] ??
+                data['todayOrders'],
           ),
 
           totalDebt: _parseSafeDouble(data['totalDebt'] ?? data['TotalDebt']),
@@ -57,7 +59,6 @@ class ReportService {
             return TopProduct(
               item['productId'] ?? 0,
               item['productName'] ?? 'Sản phẩm #${item['productId']}',
-              // Backend trả về TotalQuantity, ưu tiên lấy nó
               _parseSafeDouble(
                 item['totalQuantity'] ??
                     item['TotalQuantity'] ??
@@ -73,10 +74,9 @@ class ReportService {
       }
     } catch (e) {
       print("⚠️ Exception Dashboard: $e");
-      // Trả về dữ liệu rỗng để không crash app
+      // Trả về dữ liệu rỗng để App không bị chết
       return DashboardStats(
         todayRevenue: 0,
-        // [SỬA LỖI TẠI ĐÂY CẢ TRONG CATCH]
         todayOrdersCount: 0,
         totalDebt: 0,
         weeklyRevenue: [],

@@ -1,3 +1,5 @@
+// Thay thế nội dung file: lib/screens/stock_import_screen.dart
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -27,37 +29,51 @@ class _StockImportScreenState extends State<StockImportScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedUnit = widget.product.productUnits.firstWhere(
-      (u) => u.isBaseUnit,
-      orElse: () => widget.product.productUnits.first,
-    );
-  }
-
-  @override
-  void dispose() {
-    _quantityController.dispose();
-    _costPriceController.dispose();
-    _supplierController.dispose();
-    _noteController.dispose();
-    super.dispose();
+    // Logic tìm đơn vị cơ sở tốt rồi, giữ nguyên
+    if (widget.product.productUnits.isNotEmpty) {
+      _selectedUnit = widget.product.productUnits.firstWhere(
+        (u) => u.isBaseUnit,
+        orElse: () => widget.product.productUnits.first,
+      );
+    }
   }
 
   Future<void> _submitImport() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedUnit == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng chọn đơn vị tính')),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final storeId = authProvider.currentUser?.storeId;
 
+    if (storeId == null) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lỗi: Không tìm thấy Store ID')),
+      );
+      return;
+    }
+
+    // Xử lý parse double an toàn (thay dấu phẩy thành chấm nếu user lỡ nhập sai)
+    final quantity =
+        double.tryParse(_quantityController.text.replaceAll(',', '.')) ?? 0;
+    final costPrice =
+        double.tryParse(_costPriceController.text.replaceAll(',', '.')) ?? 0;
+
     final body = {
       'productId': widget.product.id,
       'unitId': _selectedUnit!.id,
-      'quantity': double.parse(_quantityController.text),
-      'costPrice': double.parse(_costPriceController.text),
+      'quantity': quantity,
+      'costPrice': costPrice,
       'supplierName': _supplierController.text,
       'note': _noteController.text,
-      'storeId': storeId,
+      'storeId': storeId.toString(), // Đảm bảo chuyển sang String
     };
 
     try {
@@ -69,18 +85,24 @@ class _StockImportScreenState extends State<StockImportScreen> {
 
       if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Nhập kho thành công!')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Nhập kho thành công!'),
+              backgroundColor: Colors.green,
+            ),
+          );
           Navigator.pop(context, true);
         }
       } else {
-        throw Exception('Lỗi: ${response.body}');
+        throw Exception('Server trả về: ${response.statusCode}');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Lỗi kết nối: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -90,6 +112,16 @@ class _StockImportScreenState extends State<StockImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Thêm kiểm tra nếu sản phẩm chưa có đơn vị nào
+    if (widget.product.productUnits.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Lỗi')),
+        body: const Center(
+          child: Text("Sản phẩm này chưa cấu hình đơn vị tính"),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tạo phiếu nhập kho'),
@@ -113,8 +145,11 @@ class _StockImportScreenState extends State<StockImportScreen> {
               const SizedBox(height: 20),
 
               DropdownButtonFormField<ProductUnit>(
-                initialValue: _selectedUnit,
-                decoration: const InputDecoration(labelText: 'Đơn vị nhập'),
+                value: _selectedUnit,
+                decoration: const InputDecoration(
+                  labelText: 'Đơn vị nhập',
+                  border: OutlineInputBorder(),
+                ),
                 items: widget.product.productUnits.map((unit) {
                   return DropdownMenuItem(
                     value: unit,
@@ -131,26 +166,39 @@ class _StockImportScreenState extends State<StockImportScreen> {
                   labelText: 'Số lượng nhập',
                   border: OutlineInputBorder(),
                 ),
-                keyboardType: TextInputType.number,
-                validator: (val) => (val == null || val.isEmpty)
-                    ? 'Vui lòng nhập số lượng'
-                    : null,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                validator: (val) {
+                  if (val == null || val.isEmpty)
+                    return 'Vui lòng nhập số lượng';
+                  if (double.tryParse(val.replaceAll(',', '.')) == null)
+                    return 'Số lượng không hợp lệ';
+                  return null;
+                },
               ),
 
               const SizedBox(height: 16),
               TextFormField(
                 controller: _costPriceController,
                 decoration: const InputDecoration(
-                  labelText: 'Giá vốn (Giá nhập)',
+                  labelText: 'Giá vốn (đơn giá)',
                   border: OutlineInputBorder(),
-                  suffixText: 'đ',
+                  suffixText: 'VNĐ',
                 ),
-                keyboardType: TextInputType.number,
-                validator: (val) => (val == null || val.isEmpty)
-                    ? 'Vui lòng nhập giá vốn'
-                    : null,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                validator: (val) {
+                  if (val == null || val.isEmpty)
+                    return 'Vui lòng nhập giá vốn';
+                  if (double.tryParse(val.replaceAll(',', '.')) == null)
+                    return 'Giá tiền không hợp lệ';
+                  return null;
+                },
               ),
 
+              // ... Các trường khác giữ nguyên ...
               const SizedBox(height: 16),
               TextFormField(
                 controller: _supplierController,
@@ -159,7 +207,6 @@ class _StockImportScreenState extends State<StockImportScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-
               const SizedBox(height: 16),
               TextFormField(
                 controller: _noteController,

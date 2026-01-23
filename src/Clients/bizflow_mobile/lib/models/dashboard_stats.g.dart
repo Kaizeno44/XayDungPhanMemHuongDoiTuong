@@ -19,8 +19,8 @@ Map<String, dynamic> _$DailyRevenueToJson(DailyRevenue instance) =>
 
 TopProduct _$TopProductFromJson(Map<String, dynamic> json) => TopProduct(
       (json['productId'] as num).toInt(),
-      json['productName'] as String,
-      (json['totalSold'] as num).toDouble(),
+      json['productName'] as String?,
+      (json['totalQuantity'] as num).toDouble(),
       (json['totalRevenue'] as num).toDouble(),
     );
 
@@ -28,14 +28,14 @@ Map<String, dynamic> _$TopProductToJson(TopProduct instance) =>
     <String, dynamic>{
       'productId': instance.productId,
       'productName': instance.productName,
-      'totalSold': instance.totalSold,
+      'totalQuantity': instance.totalSold,
       'totalRevenue': instance.totalRevenue,
     };
 
 DashboardStats _$DashboardStatsFromJson(Map<String, dynamic> json) =>
     DashboardStats(
       todayRevenue: (json['todayRevenue'] as num).toDouble(),
-      todayOrders: (json['todayOrders'] as num).toInt(),
+      todayOrdersCount: (json['todayOrdersCount'] as num).toInt(),
       totalDebt: (json['totalDebt'] as num).toDouble(),
       weeklyRevenue: (json['weeklyRevenue'] as List<dynamic>)
           .map((e) => DailyRevenue.fromJson(e as Map<String, dynamic>))
@@ -48,7 +48,7 @@ DashboardStats _$DashboardStatsFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$DashboardStatsToJson(DashboardStats instance) =>
     <String, dynamic>{
       'todayRevenue': instance.todayRevenue,
-      'todayOrders': instance.todayOrders,
+      'todayOrdersCount': instance.todayOrdersCount,
       'totalDebt': instance.totalDebt,
       'weeklyRevenue': instance.weeklyRevenue,
       'topProducts': instance.topProducts,

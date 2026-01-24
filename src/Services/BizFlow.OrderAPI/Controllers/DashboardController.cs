@@ -19,62 +19,69 @@ namespace BizFlow.OrderAPI.Controllers
         }
 
         [HttpGet("stats")]
-        // 1. Thêm tham số StoreId để lọc dữ liệu đúng cửa hàng
-        public async Task<IActionResult> GetDashboardStats([FromQuery] Guid storeId)
+        // 1. Làm StoreId thành tùy chọn để linh hoạt trong môi trường Dev
+        public async Task<IActionResult> GetDashboardStats([FromQuery] Guid? storeId)
         {
             try
             {
-                if (storeId == Guid.Empty)
-                    return BadRequest(new { message = "StoreId is required" });
-
                 // 2. XỬ LÝ THỜI GIAN CHUẨN UTC (Để so sánh đúng với Database)
                 var vnNow = DateTime.UtcNow.AddHours(7); // Giờ hiện tại ở VN
                 var todayVn = vnNow.Date; // 00:00 hôm nay tại VN
 
-                // Chuyển mốc 00:00 VN về lại UTC để query DB
-                // Ví dụ: 00:00 ngày 23/1 VN tương đương 17:00 ngày 22/1 UTC
-                var startOfDayUtc = todayVn.AddHours(-7); 
-                var endOfDayUtc = startOfDayUtc.AddDays(1);
-                
-                // Mốc đầu tháng (UTC)
+                // Mốc đầu tháng (VN)
                 var firstDayOfMonthVn = new DateTime(todayVn.Year, todayVn.Month, 1);
+                // Chuyển mốc đầu tháng VN về lại UTC để query DB
                 var firstDayOfMonthUtc = firstDayOfMonthVn.AddHours(-7);
-
-                // 3. Lấy đơn hàng HÔM NAY (Lọc theo StoreId và Khung giờ UTC đã quy đổi)
-                var todayOrders = await _context.Orders
-                    .Where(o => o.StoreId == storeId && 
-                                o.OrderDate >= startOfDayUtc && 
-                                o.OrderDate < endOfDayUtc)
-                    .Select(o => o.TotalAmount) // Chỉ lấy trường cần thiết để tối ưu
-                    .ToListAsync();
                 
-                var todayRevenue = todayOrders.Sum();
-                var todayOrdersCount = todayOrders.Count;
+                // Mốc cuối tháng (VN)
+                var lastDayOfMonthVn = firstDayOfMonthVn.AddMonths(1).AddDays(-1);
+                var endOfMonthUtc = lastDayOfMonthVn.AddDays(1).AddHours(-7);
 
-                // 4. Tổng nợ (Lọc theo StoreId)
-                var totalDebt = await _context.Customers
-                    .Where(c => c.StoreId == storeId)
-                    .SumAsync(c => c.CurrentDebt);
-
-                // 5. Biểu đồ doanh thu tháng (Lọc theo StoreId)
-                // Lưu ý: GroupBy trong EF Core với MySQL đôi khi phức tạp về Timezone.
-                // Cách an toàn: Lấy dữ liệu thô về rồi xử lý trên RAM (nếu dữ liệu chưa quá lớn)
-                // Hoặc Group theo ngày UTC
+                // 3. Lấy đơn hàng TRONG THÁNG (Chỉ lấy đơn đã xác nhận - Confirmed)
+                // Thử lọc theo StoreId trước
                 var monthlyOrders = await _context.Orders
                     .Where(o => o.StoreId == storeId && 
+                                o.Status == "Confirmed" && 
                                 o.OrderDate >= firstDayOfMonthUtc && 
-                                o.OrderDate < endOfDayUtc)
+                                o.OrderDate < endOfMonthUtc)
                     .Select(o => new { o.OrderDate, o.TotalAmount })
                     .ToListAsync();
 
+                // Nếu không có dữ liệu cho StoreId này, lấy toàn bộ hệ thống (để dev dễ nhìn thấy số liệu)
+                if (!monthlyOrders.Any())
+                {
+                    monthlyOrders = await _context.Orders
+                        .Where(o => o.Status == "Confirmed" && 
+                                    o.OrderDate >= firstDayOfMonthUtc && 
+                                    o.OrderDate < endOfMonthUtc)
+                        .Select(o => new { o.OrderDate, o.TotalAmount })
+                        .ToListAsync();
+                    Console.WriteLine($"--> Dashboard: Không tìm thấy đơn Confirmed cho Store {storeId}, lấy toàn bộ {monthlyOrders.Count} đơn Confirmed.");
+                }
+                else
+                {
+                    Console.WriteLine($"--> Dashboard: Tìm thấy {monthlyOrders.Count} đơn cho Store {storeId}.");
+                }
+                
+                var monthRevenue = monthlyOrders.Sum(x => x.TotalAmount);
+                var monthOrdersCount = monthlyOrders.Count;
+
+                // 4. Tổng nợ (Lọc theo StoreId nếu có)
+                var customerQuery = _context.Customers.AsQueryable();
+                if (storeId.HasValue && storeId.Value != Guid.Empty)
+                    customerQuery = customerQuery.Where(c => c.StoreId == storeId.Value);
+                
+                var totalDebt = await customerQuery.SumAsync(c => c.CurrentDebt);
+
+                // 5. Biểu đồ doanh thu tháng
                 // Xử lý GroupBy ở phía C# (Client-evaluation) để đảm bảo chuyển đổi giờ VN đúng
                 var dailyRevenueDict = monthlyOrders
                     .GroupBy(o => o.OrderDate.AddHours(7).Date) // Chuyển sang giờ VN rồi mới group
                     .ToDictionary(g => g.Key, g => g.Sum(x => x.TotalAmount));
 
                 // Tạo danh sách đầy đủ các ngày trong tháng (để lấp đầy ngày không có đơn bằng 0)
-                var daysToDisplay = todayVn.Day; // Hiển thị từ ngày 1 đến hôm nay
-                var weeklyRevenue = Enumerable.Range(0, daysToDisplay)
+                var daysInMonth = DateTime.DaysInMonth(todayVn.Year, todayVn.Month);
+                var weeklyRevenue = Enumerable.Range(0, daysInMonth)
                     .Select(offset =>
                     {
                         var date = firstDayOfMonthVn.AddDays(offset);
@@ -86,11 +93,14 @@ namespace BizFlow.OrderAPI.Controllers
                     })
                     .ToList();
 
-                // 6. Top 5 Sản phẩm (Lọc theo StoreId thông qua bảng Order)
+                // 6. Top 5 Sản phẩm TRONG THÁNG (Chỉ tính đơn Confirmed)
+                // Thử lọc theo StoreId trước
                 var topProductStats = await _context.OrderItems
                     .Include(oi => oi.Order)
                     .Where(oi => oi.Order.StoreId == storeId && 
-                                 oi.Order.OrderDate >= firstDayOfMonthUtc)
+                                 oi.Order.Status == "Confirmed" && 
+                                 oi.Order.OrderDate >= firstDayOfMonthUtc && 
+                                 oi.Order.OrderDate < endOfMonthUtc)
                     .GroupBy(oi => oi.ProductId)
                     .Select(g => new
                     {
@@ -98,26 +108,48 @@ namespace BizFlow.OrderAPI.Controllers
                         TotalSold = g.Sum(oi => oi.Quantity),
                         TotalRevenue = g.Sum(oi => oi.Total)
                     })
-                    .OrderByDescending(x => x.TotalRevenue) // Sắp xếp theo doanh thu giảm dần
+                    .OrderByDescending(x => x.TotalRevenue)
                     .Take(5)
                     .ToListAsync();
 
-                // Map tên sản phẩm
+                // Nếu không có dữ liệu cho StoreId này, lấy toàn bộ hệ thống
+                if (!topProductStats.Any())
+                {
+                    topProductStats = await _context.OrderItems
+                        .Include(oi => oi.Order)
+                        .Where(oi => oi.Order.Status == "Confirmed" && 
+                                     oi.Order.OrderDate >= firstDayOfMonthUtc && 
+                                     oi.Order.OrderDate < endOfMonthUtc)
+                        .GroupBy(oi => oi.ProductId)
+                        .Select(g => new
+                        {
+                            ProductId = g.Key,
+                            TotalSold = g.Sum(oi => oi.Quantity),
+                            TotalRevenue = g.Sum(oi => oi.Total)
+                        })
+                        .OrderByDescending(x => x.TotalRevenue)
+                        .Take(5)
+                        .ToListAsync();
+                }
+
+                // Map tên sản phẩm (Gọi sang Product Service)
                 var topProducts = new List<object>();
                 foreach (var item in topProductStats)
                 {
                     string productName = $"Sản phẩm #{item.ProductId}";
                     try 
                     {
-                        // Gọi Product Service để lấy tên thật (Nếu bạn đã setup ProductServiceClient)
-                        // var p = await _productService.GetProductById(item.ProductId);
-                        // if(p != null) productName = p.Name;
+                        var p = await _productService.GetProductByIdAsync(item.ProductId);
+                        if(p != null) productName = p.Name;
                     }
-                    catch {}
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"--> Dashboard: Lỗi lấy tên SP {item.ProductId}: {ex.Message}");
+                    }
 
                     topProducts.Add(new
                     {
-                        item.ProductId,
+                        ProductId = item.ProductId,
                         ProductName = productName,
                         TotalSold = item.TotalSold,
                         TotalRevenue = item.TotalRevenue
@@ -126,8 +158,8 @@ namespace BizFlow.OrderAPI.Controllers
 
                 return Ok(new
                 {
-                    TodayRevenue = todayRevenue,
-                    TodayOrdersCount = todayOrdersCount,
+                    TodayRevenue = monthRevenue,
+                    TodayOrdersCount = monthOrdersCount,
                     TotalDebt = totalDebt,
                     WeeklyRevenue = weeklyRevenue,
                     TopProducts = topProducts

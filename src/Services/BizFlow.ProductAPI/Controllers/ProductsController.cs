@@ -228,6 +228,7 @@ namespace BizFlow.ProductAPI.Controllers
             }
         }
 
+
         // 3.2 CẬP NHẬT KHO THÔNG MINH (Smart Update Stock)
         // 👉 ĐÂY LÀ PHẦN QUAN TRỌNG NHẤT CHO PERSON C
         // PUT: /api/Products/stock?mode=out

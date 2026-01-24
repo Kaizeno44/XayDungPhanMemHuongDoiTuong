@@ -9,13 +9,27 @@ const { Title } = Typography;
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
     fetchProducts();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const token = Cookies.get("accessToken");
+      const response = await axios.get("http://localhost:5000/api/categories", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCategories(response.data);
+    } catch (err) {
+      console.error("Lỗi tải danh mục:", err);
+    }
+  };
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -37,7 +51,19 @@ export default function ProductsPage() {
   const handleAddProduct = async (values) => {
     try {
       const token = Cookies.get("accessToken");
-      await axios.post("http://localhost:5000/api/products", values, {
+      // Map dữ liệu từ form sang DTO của Backend
+      const payload = {
+        name: values.name,
+        sku: values.sku,
+        categoryId: values.categoryId,
+        baseUnitName: values.baseUnitName || "Cái",
+        basePrice: values.price,
+        initialStock: values.initialStock || 0,
+        imageUrl: "",
+        description: values.description || ""
+      };
+
+      await axios.post("http://localhost:5000/api/products", payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
       message.success("Thêm sản phẩm thành công!");
@@ -45,29 +71,66 @@ export default function ProductsPage() {
       form.resetFields();
       fetchProducts();
     } catch (err) {
-      message.error("Lỗi khi thêm sản phẩm.");
+      console.error(err);
+      message.error("Lỗi khi thêm sản phẩm: " + (err.response?.data?.message || err.message));
     }
   };
 
   const columns = [
     { title: "Mã SP", dataIndex: "sku", key: "sku" },
     { title: "Tên sản phẩm", dataIndex: "name", key: "name", render: (text) => <strong>{text}</strong> },
-    { title: "Danh mục", dataIndex: "categoryName", key: "categoryName" },
+    { 
+      title: "Danh mục", 
+      key: "category",
+      render: (_, record) => record.categoryName || record.CategoryName || record.category?.name || record.Category?.Name || "Chưa phân loại"
+    },
+    { 
+      title: "Đơn vị tính", 
+      key: "units",
+      render: (_, record) => {
+        const units = record.productUnits || record.ProductUnits || [];
+        return (
+          <Space direction="vertical" size={0}>
+            {units.map((u, idx) => (
+              <Tag key={idx} color={u.isBaseUnit ? "blue" : "default"}>
+                {u.unitName} {u.conversionValue > 1 ? `(x${u.conversionValue})` : ""}
+              </Tag>
+            ))}
+          </Space>
+        );
+      }
+    },
     { 
       title: "Giá bán", 
-      dataIndex: "price", 
       key: "price",
-      render: (price) => <span className="text-red-600 font-bold">{price?.toLocaleString("vi-VN")} đ</span>
+      render: (_, record) => {
+        const units = record.productUnits || record.ProductUnits || [];
+        return (
+          <Space direction="vertical" size={0}>
+            {units.map((u, idx) => (
+              <div key={idx}>
+                <span className="text-red-600 font-bold">
+                  {u.price?.toLocaleString("vi-VN")} đ
+                </span>
+                <small className="text-gray-400"> /{u.unitName}</small>
+              </div>
+            ))}
+          </Space>
+        );
+      }
     },
     { 
       title: "Tồn kho", 
-      dataIndex: "inventoryQuantity", 
-      key: "inventoryQuantity",
-      render: (qty, record) => (
-        <Tag color={qty < 10 ? "volcano" : "green"}>
-          {qty} {record.unitName || 'Cái'}
-        </Tag>
-      )
+      key: "stock",
+      render: (_, record) => {
+        const stock = record.inventory?.quantity ?? record.Inventory?.Quantity ?? 0;
+        const unit = record.baseUnit ?? record.BaseUnit ?? 'Cái';
+        return (
+          <Tag color={stock < 10 ? "volcano" : "green"} style={{ fontSize: '14px', padding: '4px 8px' }}>
+            <strong>{stock}</strong> {unit}
+          </Tag>
+        );
+      }
     },
     {
       title: "Thao tác",
@@ -107,23 +170,40 @@ export default function ProductsPage() {
         open={isModalVisible}
         onCancel={() => setIsModalVisible(false)}
         onOk={() => form.submit()}
+        width={600}
       >
-        <Form form={form} layout="vertical" onFinish={handleAddProduct}>
-          <Form.Item name="name" label="Tên sản phẩm" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="sku" label="Mã SKU" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="price" label="Giá bán" rules={[{ required: true }]}>
-            <InputNumber className="w-full" formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} />
-          </Form.Item>
-          <Form.Item name="categoryId" label="Danh mục" rules={[{ required: true }]}>
-            <Select>
-              <Select.Option value={1}>Vật liệu xây dựng</Select.Option>
-              <Select.Option value={2}>Điện nước</Select.Option>
-            </Select>
-          </Form.Item>
+        <Form form={form} layout="vertical" onFinish={handleAddProduct} initialValues={{ baseUnitName: 'Cái', initialStock: 0 }}>
+          <div className="grid grid-cols-2 gap-4">
+            <Form.Item name="name" label="Tên sản phẩm" rules={[{ required: true }]} className="col-span-2">
+              <Input placeholder="VD: Xi măng Hà Tiên" />
+            </Form.Item>
+            <Form.Item name="sku" label="Mã SKU" rules={[{ required: true }]}>
+              <Input placeholder="VD: XM-HT-01" />
+            </Form.Item>
+            <Form.Item name="categoryId" label="Danh mục" rules={[{ required: true }]}>
+              <Select placeholder="Chọn danh mục">
+                {categories.map(cat => (
+                  <Select.Option key={cat.id} value={cat.id}>{cat.name}</Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+            <Form.Item name="baseUnitName" label="Đơn vị tính gốc" rules={[{ required: true }]}>
+              <Input placeholder="VD: Cái, Bao, Kg..." />
+            </Form.Item>
+            <Form.Item name="price" label="Giá bán (Đơn vị gốc)" rules={[{ required: true }]}>
+              <InputNumber 
+                className="w-full" 
+                formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={value => value.replace(/\$\s?|(,*)/g, '')}
+              />
+            </Form.Item>
+            <Form.Item name="initialStock" label="Số lượng tồn kho ban đầu">
+              <InputNumber className="w-full" min={0} />
+            </Form.Item>
+            <Form.Item name="description" label="Mô tả sản phẩm" className="col-span-2">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
     </div>

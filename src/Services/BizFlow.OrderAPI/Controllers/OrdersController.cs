@@ -63,7 +63,63 @@ namespace BizFlow.OrderAPI.Controllers
 
             if (order == null) return NotFound();
 
-            return Ok(order);
+            // Lấy tên sản phẩm và đơn vị tính động từ Product Service (Cách 2: Không sửa DB)
+            var orderItemsWithNames = new List<object>();
+            foreach (var item in order.OrderItems)
+            {
+                string productName = $"Sản phẩm #{item.ProductId}";
+                string unitName = item.UnitName; // Mặc định lấy từ DB (nếu có)
+
+                try
+                {
+                    var p = await _productService.GetProductByIdAsync(item.ProductId);
+                    if (p != null)
+                    {
+                        productName = p.Name;
+                        // Tìm tên đơn vị tính từ danh sách đơn vị của sản phẩm
+                        var unit = p.ProductUnits?.FirstOrDefault(u => u.Id == item.UnitId);
+                        if (unit != null) unitName = unit.UnitName;
+                    }
+                }
+                catch { }
+
+                orderItemsWithNames.Add(new
+                {
+                    item.Id,
+                    item.ProductId,
+                    ProductName = productName,
+                    item.UnitId,
+                    UnitName = unitName, // Trả về tên đơn vị đã tìm được
+                    item.Quantity,
+                    item.UnitPrice,
+                    item.Total
+                });
+            }
+
+            return Ok(new
+            {
+                order.Id,
+                order.OrderCode,
+                order.OrderDate,
+                order.TotalAmount,
+                order.Status,
+                order.PaymentMethod,
+                order.CustomerId,
+                order.StoreId,
+                OrderItems = orderItemsWithNames
+            });
+        }
+
+        [HttpPut("{id}/status")]
+        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromQuery] string status)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null) return NotFound();
+
+            order.Status = status;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Cập nhật trạng thái thành công", status = order.Status });
         }
 
         [HttpPost]

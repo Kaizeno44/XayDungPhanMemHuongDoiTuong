@@ -19,11 +19,6 @@ namespace BizFlow.OrderAPI.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // [2] QUAN TRỌNG: Thêm 3 dòng này để tạo bảng cho Outbox Pattern
-            modelBuilder.AddInboxStateEntity();
-            modelBuilder.AddOutboxMessageEntity();
-            modelBuilder.AddOutboxStateEntity();
-
             // Các cấu hình khác của bạn (nếu có)
             modelBuilder.Entity<Order>()
                 .HasMany(o => o.OrderItems)

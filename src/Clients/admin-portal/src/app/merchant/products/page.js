@@ -67,7 +67,8 @@ export default function ProductsPage() {
       const response = await axios.get("http://localhost:5000/api/categories", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setCategories(response.data);
+      // API trả về mảng trực tiếp hoặc { data: [...] }
+      setCategories(response.data.data || response.data);
     } catch (err) {
       console.error("Lỗi tải danh mục:", err);
     }
@@ -174,6 +175,28 @@ export default function ProductsPage() {
     setIsModalVisible(true);
   };
 
+  const handleDelete = async (id) => {
+    Modal.confirm({
+      title: "Xác nhận xóa",
+      content: "Bạn có chắc chắn muốn xóa sản phẩm này không?",
+      okText: "Xóa",
+      okType: "danger",
+      cancelText: "Hủy",
+      onOk: async () => {
+        try {
+          const token = Cookies.get("accessToken");
+          await axios.delete(`http://localhost:5000/api/products/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          message.success("Xóa sản phẩm thành công!");
+          fetchProducts();
+        } catch (err) {
+          message.error("Lỗi khi xóa: " + (err.response?.data?.message || err.message));
+        }
+      }
+    });
+  };
+
   const columns = [
     { title: "Mã SP", dataIndex: "sku", key: "sku" },
     { title: "Tên sản phẩm", dataIndex: "name", key: "name", render: (text) => <strong>{text}</strong> },
@@ -236,7 +259,7 @@ export default function ProductsPage() {
       render: (_, record) => (
         <Space size="middle">
           <Button icon={<EditOutlined />} onClick={() => handleEditClick(record)} />
-          <Button danger icon={<DeleteOutlined />} />
+          <Button danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.id)} />
         </Space>
       ),
     },

@@ -49,8 +49,8 @@ export default function ReportsPage() {
         businessAddress: "123 Tech Street, Digital City",
         receiptDate: new Date().toISOString(),
         bookNumber: "BK-2026",
-        receiptNumber: record.id.substring(0, 8).toUpperCase(),
-        payerName: "Khách hàng ID: " + record.customerId,
+        receiptNumber: record.id.toString().substring(0, 8).toUpperCase(),
+        payerName: record.customerName || "Khách lẻ",
         payerAddress: "Địa chỉ khách hàng",
         reasonForPayment: record.reason || "Thanh toán đơn hàng",
         amount: amount,
@@ -84,6 +84,11 @@ export default function ReportsPage() {
       render: (text) => new Date(text).toLocaleString("vi-VN"),
     },
     {
+      title: "Khách hàng",
+      dataIndex: "customerName",
+      key: "customerName",
+    },
+    {
       title: "Lý do",
       dataIndex: "reason",
       key: "reason",
@@ -93,8 +98,8 @@ export default function ReportsPage() {
       dataIndex: "action",
       key: "action",
       render: (action) => (
-        <Tag color={action === "Debit" ? "red" : "green"}>
-          {action === "Debit" ? "Ghi nợ" : "Thu tiền"}
+        <Tag color={action === "Ghi nợ" ? "red" : "green"}>
+          {action}
         </Tag>
       ),
     },
@@ -102,8 +107,8 @@ export default function ReportsPage() {
       title: "Số tiền",
       dataIndex: "amount",
       key: "amount",
-      render: (amount) => (
-        <Text strong style={{ color: amount < 0 ? "#52c41a" : "#f5222d" }}>
+      render: (amount, record) => (
+        <Text strong style={{ color: record.action === "Thu tiền" ? "#52c41a" : "#f5222d" }}>
           {amount.toLocaleString("vi-VN")} đ
         </Text>
       ),

@@ -18,19 +18,23 @@ namespace BizFlow.OrderAPI.Controllers
         [HttpGet("cash-book")]
         public async Task<IActionResult> GetCashBook()
         {
-            var logs = await _context.DebtLogs
-                .OrderByDescending(l => l.CreatedAt)
-                .Select(l => new {
-                    l.Id,
-                    l.CustomerId,
-                    l.Amount,
-                    l.Action,
-                    l.Reason,
-                    l.CreatedAt
+            // Lấy tất cả đơn hàng đã xác nhận (Confirmed)
+            var confirmedOrders = await _context.Orders
+                .Where(o => o.Status == "Confirmed")
+                .OrderByDescending(o => o.OrderDate)
+                .Select(o => new
+                {
+                    Id = o.Id,
+                    CustomerId = o.CustomerId,
+                    CustomerName = _context.Customers.Where(c => c.Id == o.CustomerId).Select(c => c.FullName).FirstOrDefault() ?? "Khách lẻ",
+                    Amount = o.TotalAmount,
+                    Action = o.PaymentMethod == "Debt" ? "Ghi nợ" : "Thu tiền",
+                    Reason = $"Thanh toán đơn hàng {o.OrderCode}",
+                    CreatedAt = o.OrderDate
                 })
                 .ToListAsync();
 
-            return Ok(logs);
+            return Ok(confirmedOrders);
         }
 
         [HttpGet("revenue-stats")]

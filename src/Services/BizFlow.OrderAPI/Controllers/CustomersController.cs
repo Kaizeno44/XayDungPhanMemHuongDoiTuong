@@ -19,14 +19,13 @@ namespace BizFlow.OrderAPI.Controllers
 
         // ==========================================
         // 1. GET: api/Customers (Lấy danh sách)
-        // 👉 API NÀY ĐỂ SỬA LỖI 404 BÊN FLUTTER
         // ==========================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CustomerDto>>> GetCustomers()
         {
             var customers = await _context.Customers
-                .OrderBy(c => c.FullName) // Sắp xếp tên A-Z cho đẹp
-                .Select(c => new CustomerDto // Sử dụng CustomerDto rõ ràng
+                .OrderBy(c => c.FullName) 
+                .Select(c => new CustomerDto
                 {
                     Id = c.Id,
                     FullName = c.FullName,
@@ -42,19 +41,17 @@ namespace BizFlow.OrderAPI.Controllers
 
         // ==========================================
         // 2. POST: api/Customers (Tạo khách hàng mới)
-        // 👉 Dùng cái này tạo khách cho nhanh, khỏi vào Adminer
         // ==========================================
         [HttpPost]
         public async Task<IActionResult> CreateCustomer([FromBody] Customer customer)
         {
             if (customer.Id == Guid.Empty)
-                customer.Id = Guid.NewGuid(); // Tự tạo ID nếu thiếu
+                customer.Id = Guid.NewGuid();
 
             if (string.IsNullOrEmpty(customer.FullName))
                 return BadRequest("Tên khách hàng không được để trống");
 
-            // Mặc định nợ = 0 khi mới tạo
-            customer.CurrentDebt = 0;
+            customer.CurrentDebt = 0; // Mặc định nợ = 0
 
             _context.Customers.Add(customer);
             await _context.SaveChangesAsync();
@@ -64,23 +61,19 @@ namespace BizFlow.OrderAPI.Controllers
 
         // ==========================================
         // 3. GET: api/customers/{id}/history
+        // 👉 ĐÃ CẬP NHẬT: Lấy thêm Lịch sử Nợ (DebtLogs)
         // ==========================================
         [HttpGet("{id}/history")]
         public async Task<IActionResult> GetHistory(Guid id)
         {
-            // Kiểm tra khách có tồn tại không trước
+            // 1. Kiểm tra khách có tồn tại không
             var customer = await _context.Customers.FindAsync(id);
             if (customer == null)
             {
                 return NotFound(new { Message = "Khách hàng không tồn tại." });
             }
 
-            // Tính tổng nợ thực tế từ Log (để đối chiếu)
-            var totalDebt = await _context.DebtLogs
-                .Where(d => d.CustomerId == id)
-                .SumAsync(d => d.Amount);
-
-            // Lấy danh sách đơn hàng
+            // 2. Lấy danh sách Đơn hàng (Tab 1)
             var orders = await _context.Orders
                 .Where(o => o.CustomerId == id)
                 .OrderByDescending(o => o.OrderDate)
@@ -95,12 +88,29 @@ namespace BizFlow.OrderAPI.Controllers
                 })
                 .ToListAsync();
 
+            // 3. 👇 BỔ SUNG MỚI: Lấy danh sách Lịch sử Nợ (Tab 2)
+            var debtLogs = await _context.DebtLogs
+                .Where(d => d.CustomerId == id)
+                .OrderByDescending(d => d.CreatedAt) // Mới nhất lên đầu
+                .Select(d => new DebtLogDto
+                {
+                    Id = d.Id,
+                    CreatedAt = d.CreatedAt,
+                    Amount = d.Amount,
+                    Action = d.Action,      // "Debit" hoặc "Repayment"/"Credit"
+                    Reason = d.Reason,      // "Đơn hàng #..." hoặc "Khách trả nợ"
+                    RefOrderId = d.RefOrderId
+                })
+                .ToListAsync();
+
+            // 4. Đóng gói response hoàn chỉnh
             var response = new CustomerHistoryResponse
             {
                 CustomerId = id,
-                CurrentDebt = customer.CurrentDebt, // Lấy CurrentDebt từ bảng Customer cho chuẩn xác
+                CurrentDebt = customer.CurrentDebt, // Lấy current debt từ bảng Customer
                 OrderCount = orders.Count,
-                Orders = orders
+                Orders = orders,       // Dữ liệu cho Tab Đơn Hàng
+                DebtHistory = debtLogs // 👈 Dữ liệu cho Tab Lịch sử Nợ
             };
 
             return Ok(response);
@@ -123,25 +133,23 @@ namespace BizFlow.OrderAPI.Controllers
             // 2. Ghi log trả nợ (Amount ÂM để trừ nợ)
             var debtLog = new DebtLog
             {
-                Id = Guid.NewGuid(), // Tạo ID mới cho log
+                Id = Guid.NewGuid(),
                 CustomerId = request.CustomerId,
-// Kiểm tra nếu StoreId gửi lên là rỗng (Guid.Empty) thì lấy StoreId của khách hàng
-StoreId = (request.StoreId == Guid.Empty) ? customer.StoreId : request.StoreId,                Amount = -request.Amount,         // 👈 DẤU TRỪ QUAN TRỌNG
-                Action = "Repayment",
+                // Logic thông minh: Nếu StoreId rỗng thì lấy của khách, ngược lại lấy từ request
+                StoreId = (request.StoreId == Guid.Empty) ? customer.StoreId : request.StoreId, 
+                Amount = -request.Amount, // 👈 Lưu số âm
+                Action = "Repayment",     // Đánh dấu là trả nợ
                 Reason = "Khách thanh toán nợ",
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.DebtLogs.Add(debtLog);
 
-            // 3. Cập nhật nhanh CurrentDebt trong Customer
-            // Ép kiểu sang decimal để tính toán chính xác với tiền tệ
-            decimal paymentAmount = (decimal)request.Amount;
-            customer.CurrentDebt -= paymentAmount;
+            // 3. Cập nhật CurrentDebt trong Customer
+            customer.CurrentDebt -= request.Amount;
 
-            // 4. Chống nợ âm hoặc sai số nhỏ
-            // Nếu nợ còn lại nhỏ hơn 10đ (coi như bằng 0 cho VNĐ) hoặc bị âm do làm tròn
-            if (customer.CurrentDebt < 10)
+            // 4. Xử lý làm tròn số (Chống nợ âm nhỏ do sai số)
+            if (customer.CurrentDebt < 10) 
             {
                 customer.CurrentDebt = 0;
             }
@@ -154,5 +162,13 @@ StoreId = (request.StoreId == Guid.Empty) ? customer.StoreId : request.StoreId, 
                 NewDebt = customer.CurrentDebt
             });
         }
+    }
+
+    // Class DTO request nội bộ (nếu chưa có file riêng thì để ở đây hoặc move sang DTOs)
+    public class PayDebtRequest
+    {
+        public Guid CustomerId { get; set; }
+        public Guid StoreId { get; set; }
+        public decimal Amount { get; set; }
     }
 }

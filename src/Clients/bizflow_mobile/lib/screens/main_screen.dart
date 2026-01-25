@@ -1,37 +1,31 @@
-import 'package:bizflow_mobile/screens/product_list_screen.dart';
 import 'package:flutter/material.dart';
-import 'owner_dashboard_screen.dart';
-import 'warehouse_screen.dart'; // Chúng ta sẽ tạo file này ở bước 2
+import 'package:bizflow_mobile/screens/owner_dashboard_screen.dart';
+import 'package:bizflow_mobile/screens/product_list_screen.dart';
+import 'package:bizflow_mobile/screens/warehouse_screen.dart';
+import 'package:bizflow_mobile/screens/debt_list_screen.dart'; // Import màn hình Sổ nợ
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-
-  // Danh sách các màn hình tương ứng với 3 tab
   final List<Widget> _screens = [
-    const OwnerDashboardScreen(), // Tab 0
-    const ProductListScreen(), // Tab 1
-    const WarehouseScreen(), // Tab 2
+    const OwnerDashboardScreen(),
+    const ProductListScreen(),
+    const DebtListScreen(), // Tab mới
+    const WarehouseScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Hiển thị màn hình theo index hiện tại
       body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: (index) => setState(() => _currentIndex = index),
         selectedItemColor: Colors.orange[800],
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
@@ -45,9 +39,10 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Sản phẩm',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.warehouse),
-            label: 'Kho hàng',
+            icon: Icon(Icons.account_balance_wallet),
+            label: 'Sổ Nợ',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Kho hàng'),
         ],
       ),
     );

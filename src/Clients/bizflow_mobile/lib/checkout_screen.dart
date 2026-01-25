@@ -1,19 +1,15 @@
-// lib/checkout_screen.dart
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // [MỚI] Riverpod
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
-// [MỚI] Import Controller & Models
 import 'package:bizflow_mobile/features/cart/cart_controller.dart';
-import '../core/config/api_config.dart';
-import '../models.dart';
-import 'screens/invoice_preview_screen.dart';
-import 'create_customer_dialog.dart';
-import 'order_history_screen.dart';
+import 'package:bizflow_mobile/core/config/api_config.dart';
+import 'package:bizflow_mobile/models.dart';
+import 'package:bizflow_mobile/screens/invoice_preview_screen.dart';
+import 'package:bizflow_mobile/screens/create_customer_dialog.dart'; // Đảm bảo import đúng
 
-// 1. Chuyển thành ConsumerStatefulWidget
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.storeId});
 
@@ -36,9 +32,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _fetchCustomers();
   }
 
-  // --- 1. FETCH KHÁCH HÀNG (Giữ nguyên logic cũ) ---
   Future<void> _fetchCustomers() async {
-    final url = Uri.parse(ApiConfig.customers);
+    final url = Uri.parse(
+      ApiConfig.customers,
+    ).replace(queryParameters: {'storeId': widget.storeId});
+
     try {
       final response = await http
           .get(url, headers: ApiConfig.headers)
@@ -66,9 +64,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
   }
 
-  // --- 2. TẠO ĐƠN HÀNG (Dùng Riverpod CartController) ---
   Future<void> createOrder() async {
-    // [MỚI] Lấy dữ liệu giỏ hàng từ Riverpod
     final cartState = ref.read(cartControllerProvider);
 
     if (selectedCustomerId == null) {
@@ -82,14 +78,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     setState(() => isLoadingOrder = true);
 
-    // Snapshot dữ liệu để hiển thị hóa đơn sau khi xóa giỏ hàng
     final itemsSnapshot = List<CartItem>.from(cartState.items);
     final totalSnapshot = cartState.totalAmount;
 
-    // Tìm khách hàng đã chọn để lấy tên hiển thị
+    // Lấy tên khách hàng để hiển thị hóa đơn
     final customerObj = customers.firstWhere(
       (c) => c.id == selectedCustomerId,
-      orElse: () => Customer(id: '', name: 'Khách lẻ', phone: '', address: ''),
+      orElse: () => Customer(
+        id: '',
+        name: 'Khách lẻ',
+        phone: '',
+        address: '',
+        currentDebt: 0,
+      ),
     );
 
     final url = Uri.parse(ApiConfig.orders);
@@ -106,7 +107,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // [QUAN TRỌNG] Xóa giỏ hàng thông qua Controller
         ref.read(cartControllerProvider.notifier).clearCart();
 
         if (mounted) {
@@ -171,9 +171,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         actions: [
           OutlinedButton(
             onPressed: () {
-              Navigator.of(ctx).pop(); // Đóng dialog
-              Navigator.of(context).pop(); // Về màn hình Cart
-              Navigator.of(context).pop(); // Về màn hình Home (nếu cần)
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
             },
             child: const Text("Đóng"),
           ),
@@ -207,7 +206,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe số lượng items để hiển thị trên nút xác nhận
     final cartState = ref.watch(cartControllerProvider);
     final itemCount = cartState.items.length;
 
@@ -244,8 +242,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                             ),
                           ),
                           isExpanded: true,
-                          value:
-                              selectedCustomerId, // Fix: Dùng value thay vì initialValue
+                          value: selectedCustomerId,
                           hint: const Text("Chọn khách hàng..."),
                           items: customers
                               .map(
@@ -262,9 +259,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                               setState(() => selectedCustomerId = val),
                         ),
                 ),
-
                 const SizedBox(width: 8),
-
                 // NÚT THÊM NHANH KHÁCH HÀNG
                 Container(
                   width: 55,
@@ -296,30 +291,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ],
             ),
 
-            const SizedBox(height: 10),
-
-            // Nút xem lịch sử (Chỉ hiện khi đã chọn khách)
-            if (selectedCustomerId != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.history, color: Colors.blue),
-                  label: const Text("Xem lịch sử & Công nợ"),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.blue.shade50,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            OrderHistoryScreen(customerId: selectedCustomerId!),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
+            // ĐÃ XÓA NÚT "XEM LỊCH SỬ & CÔNG NỢ" Ở ĐÂY
             const SizedBox(height: 20),
             const Divider(),
 
@@ -367,7 +339,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         itemCount == 0 ||
                         selectedCustomerId == null)
                     ? null
-                    : createOrder, // Gọi hàm createOrder mới
+                    : createOrder,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,

@@ -1,19 +1,16 @@
-// lib/checkout_screen.dart
 import 'dart:convert';
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // [MỚI] Riverpod
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
-// [MỚI] Import Controller & Models
+// Import các file cần thiết
 import 'package:bizflow_mobile/features/cart/cart_controller.dart';
 import '../core/config/api_config.dart';
 import '../models.dart';
 import 'screens/invoice_preview_screen.dart';
 import 'create_customer_dialog.dart';
-import 'order_history_screen.dart';
+// import 'order_history_screen.dart'; // Không cần import nữa vì đã bỏ nút xem lịch sử
 
-// 1. Chuyển thành ConsumerStatefulWidget
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.storeId});
 
@@ -27,6 +24,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   List<Customer> customers = [];
   String? selectedCustomerId;
   String selectedPaymentMethod = "Cash";
+
   bool isLoadingOrder = false;
   bool isLoadingCustomers = true;
 
@@ -36,7 +34,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _fetchCustomers();
   }
 
-  // --- 1. FETCH KHÁCH HÀNG (Giữ nguyên logic cũ) ---
+  // --- 1. FETCH KHÁCH HÀNG ---
   Future<void> _fetchCustomers() async {
     final url = Uri.parse(ApiConfig.customers);
     try {
@@ -55,20 +53,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               isLoadingCustomers = false;
             });
           }
-        } else {
-          if (mounted) setState(() => isLoadingCustomers = false);
         }
       } else {
         if (mounted) setState(() => isLoadingCustomers = false);
       }
     } catch (e) {
       if (mounted) setState(() => isLoadingCustomers = false);
+      debugPrint("Error fetching customers: $e");
     }
   }
 
-  // --- 2. TẠO ĐƠN HÀNG (Dùng Riverpod CartController) ---
+  // --- 2. TẠO ĐƠN HÀNG ---
   Future<void> createOrder() async {
-    // [MỚI] Lấy dữ liệu giỏ hàng từ Riverpod
     final cartState = ref.read(cartControllerProvider);
 
     if (selectedCustomerId == null) {
@@ -93,6 +89,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
 
     final url = Uri.parse(ApiConfig.orders);
+
     final requestBody = {
       "customerId": selectedCustomerId,
       "storeId": widget.storeId,
@@ -106,22 +103,26 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // [QUAN TRỌNG] Xóa giỏ hàng thông qua Controller
+        // Xóa giỏ hàng sau khi thành công
         ref.read(cartControllerProvider.notifier).clearCart();
 
         if (mounted) {
           _showSuccessDialog(itemsSnapshot, totalSnapshot, customerObj.name);
         }
       } else {
-        String errorMsg = response.body;
+        String errorMsg = "Tạo đơn thất bại";
         try {
           final errJson = jsonDecode(response.body);
           if (errJson['errors'] != null) {
             errorMsg = errJson['errors'].toString();
-          } else {
-            errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
+          } else if (errJson['message'] != null) {
+            errorMsg = errJson['message'];
+          } else if (errJson['title'] != null) {
+            errorMsg = errJson['title'];
           }
-        } catch (_) {}
+        } catch (_) {
+          errorMsg = response.body;
+        }
         if (mounted) _showSnackBar("Lỗi: $errorMsg", isError: true);
       }
     } catch (e) {
@@ -135,7 +136,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -149,13 +151,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Column(
           children: const [
-            Icon(Icons.check_circle, color: Colors.green, size: 50),
-            SizedBox(height: 10),
+            Icon(Icons.check_circle, color: Colors.green, size: 60),
+            SizedBox(height: 12),
             Text(
-              "Thành công",
+              "Đặt hàng thành công!",
               style: TextStyle(
                 color: Colors.green,
                 fontWeight: FontWeight.bold,
@@ -164,7 +166,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ],
         ),
         content: const Text(
-          "Đơn hàng đã tạo!\nBạn có muốn in hoặc chia sẻ hóa đơn không?",
+          "Đơn hàng đã được lưu vào hệ thống.\nBạn có muốn in hóa đơn ngay không?",
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.spaceEvenly,
@@ -172,18 +174,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           OutlinedButton(
             onPressed: () {
               Navigator.of(ctx).pop(); // Đóng dialog
-              Navigator.of(context).pop(); // Về màn hình Cart
-              Navigator.of(context).pop(); // Về màn hình Home (nếu cần)
+              Navigator.of(context).pop(); // Quay về Cart/Product list
             },
             child: const Text("Đóng"),
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
+              backgroundColor: Colors.blue[700],
               foregroundColor: Colors.white,
             ),
             icon: const Icon(Icons.print, size: 18),
-            label: const Text("In / Share"),
+            label: const Text("In Hóa Đơn"),
             onPressed: () {
               Navigator.of(ctx).pop();
               Navigator.push(
@@ -207,7 +208,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe số lượng items để hiển thị trên nút xác nhận
     final cartState = ref.watch(cartControllerProvider);
     final itemCount = cartState.items.length;
 
@@ -217,11 +217,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // --- KHU VỰC CHỌN KHÁCH HÀNG ---
+            // --- 1. CHỌN KHÁCH HÀNG ---
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -229,23 +229,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   child: isLoadingCustomers
                       ? const Center(
                           child: Padding(
-                            padding: EdgeInsets.all(15),
+                            padding: EdgeInsets.all(12),
                             child: CircularProgressIndicator(),
                           ),
                         )
                       : DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
-                            labelText: "Chọn khách hàng",
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.person),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 10,
+                          decoration: InputDecoration(
+                            labelText: "Khách hàng",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            prefixIcon: const Icon(Icons.person),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
                               vertical: 16,
                             ),
                           ),
                           isExpanded: true,
-                          value:
-                              selectedCustomerId, // Fix: Dùng value thay vì initialValue
+                          value: selectedCustomerId,
                           hint: const Text("Chọn khách hàng..."),
                           items: customers
                               .map(
@@ -258,25 +259,28 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (val) =>
-                              setState(() => selectedCustomerId = val),
+                          onChanged: (val) {
+                            setState(() => selectedCustomerId = val);
+                          },
                         ),
                 ),
-
                 const SizedBox(width: 8),
 
-                // NÚT THÊM NHANH KHÁCH HÀNG
-                Container(
-                  width: 55,
-                  height: 55,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.blue.shade300),
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.person_add, color: Colors.blue),
-                    tooltip: "Thêm khách mới",
+                // Nút Thêm khách hàng mới
+                SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      backgroundColor: Colors.blue.shade50,
+                      foregroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      elevation: 0,
+                      side: BorderSide(color: Colors.blue.shade200),
+                    ),
                     onPressed: () async {
                       final newCustomer = await showDialog<Customer>(
                         context: context,
@@ -289,101 +293,136 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           customers.add(newCustomer);
                           selectedCustomerId = newCustomer.id;
                         });
+                        _showSnackBar("Đã thêm khách hàng mới!");
                       }
                     },
+                    child: const Icon(Icons.person_add),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 10),
-
-            // Nút xem lịch sử (Chỉ hiện khi đã chọn khách)
-            if (selectedCustomerId != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.history, color: Colors.blue),
-                  label: const Text("Xem lịch sử & Công nợ"),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.blue.shade50,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            OrderHistoryScreen(customerId: selectedCustomerId!),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-            const SizedBox(height: 20),
+            // [ĐÃ XÓA NÚT XEM LỊCH SỬ TẠI ĐÂY]
+            const SizedBox(height: 24),
             const Divider(),
+            const SizedBox(height: 16),
 
-            // Chọn phương thức thanh toán
+            // --- 2. PHƯƠNG THỨC THANH TOÁN ---
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                "Phương thức thanh toán:",
+                "Phương thức thanh toán",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
-            RadioListTile(
-              title: const Text("Tiền mặt"),
-              subtitle: const Text("Thanh toán ngay"),
-              value: "Cash",
-              groupValue: selectedPaymentMethod,
-              activeColor: Colors.green,
-              secondary: const Icon(Icons.money, color: Colors.green),
-              onChanged: (val) =>
-                  setState(() => selectedPaymentMethod = val.toString()),
-            ),
-            RadioListTile(
-              title: const Text("Ghi nợ"),
-              subtitle: const Text("Thêm vào công nợ"),
-              value: "Debt",
-              groupValue: selectedPaymentMethod,
-              activeColor: Colors.red,
-              secondary: const Icon(
-                Icons.account_balance_wallet,
-                color: Colors.red,
+            const SizedBox(height: 8),
+
+            // Radio Tiền mặt
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: selectedPaymentMethod == "Cash"
+                      ? Colors.green
+                      : Colors.grey.shade300,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                color: selectedPaymentMethod == "Cash"
+                    ? Colors.green.withOpacity(0.05)
+                    : null,
               ),
-              onChanged: (val) =>
-                  setState(() => selectedPaymentMethod = val.toString()),
+              margin: const EdgeInsets.only(bottom: 8),
+              child: RadioListTile(
+                title: const Text(
+                  "Tiền mặt",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text("Thanh toán ngay khi nhận hàng"),
+                value: "Cash",
+                groupValue: selectedPaymentMethod,
+                activeColor: Colors.green,
+                secondary: const Icon(
+                  Icons.monetization_on,
+                  color: Colors.green,
+                ),
+                onChanged: (val) =>
+                    setState(() => selectedPaymentMethod = val.toString()),
+              ),
             ),
 
-            const Spacer(),
+            // Radio Ghi nợ
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: selectedPaymentMethod == "Debt"
+                      ? Colors.red
+                      : Colors.grey.shade300,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                color: selectedPaymentMethod == "Debt"
+                    ? Colors.red.withOpacity(0.05)
+                    : null,
+              ),
+              child: RadioListTile(
+                title: const Text(
+                  "Ghi nợ",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text("Lưu vào sổ nợ khách hàng"),
+                value: "Debt",
+                groupValue: selectedPaymentMethod,
+                activeColor: Colors.red,
+                secondary: const Icon(
+                  Icons.account_balance_wallet,
+                  color: Colors.red,
+                ),
+                onChanged: (val) =>
+                    setState(() => selectedPaymentMethod = val.toString()),
+              ),
+            ),
 
-            // Nút Xác Nhận
+            const SizedBox(height: 40),
+
+            // --- 3. NÚT SUBMIT ---
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 54,
               child: ElevatedButton(
                 onPressed:
                     (isLoadingOrder ||
                         itemCount == 0 ||
                         selectedCustomerId == null)
                     ? null
-                    : createOrder, // Gọi hàm createOrder mới
+                    : createOrder,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  elevation: 2,
                 ),
                 child: isLoadingOrder
                     ? const SizedBox(
                         height: 24,
                         width: 24,
-                        child: CircularProgressIndicator(color: Colors.white),
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 3,
+                        ),
                       )
-                    : Text(
-                        "XÁC NHẬN TẠO ĐƠN ($itemCount món)",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle_outline),
+                          const SizedBox(width: 8),
+                          Text(
+                            "XÁC NHẬN TẠO ĐƠN ($itemCount SP)",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
               ),
             ),

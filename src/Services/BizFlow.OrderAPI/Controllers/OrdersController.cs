@@ -54,18 +54,6 @@ namespace BizFlow.OrderAPI.Controllers
             return Ok(orders);
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetOrderById(Guid id)
-        {
-            var order = await _context.Orders
-                .Include(o => o.OrderItems)
-                .FirstOrDefaultAsync(o => o.Id == id);
-
-            if (order == null) return NotFound();
-
-            return Ok(order);
-        }
-
         [HttpPost]
         public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
         {
@@ -214,6 +202,53 @@ namespace BizFlow.OrderAPI.Controllers
                 // Log error here
                 return StatusCode(500, $"Lỗi xử lý đơn hàng: {ex.Message}");
             }
+        }
+
+        // [New] Lấy chi tiết đơn hàng (Xử lý lỗi 404 và Vòng lặp JSON)
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetOrderById(Guid id)
+        {
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                .Where(o => o.Id == id)
+                .Select(o => new
+                {
+                    o.Id,
+                    o.OrderCode,
+                    o.OrderDate,
+                    o.TotalAmount,
+                    o.Status,
+                    o.PaymentMethod,
+                    o.CustomerId,
+                    o.StoreId,
+                    OrderItems = o.OrderItems.Select(oi => new
+                    {
+                        oi.Id,
+                        oi.ProductId,
+                        oi.UnitId,
+                        oi.Quantity,
+                        oi.UnitPrice,
+                        oi.Total
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (order == null) return NotFound(new { message = "Không tìm thấy đơn hàng" });
+
+            return Ok(order);
+        }
+
+        // [New] Cập nhật trạng thái đơn hàng (Xác nhận đơn hàng)
+        [HttpPut("{id}/status")]
+        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] string status)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null) return NotFound(new { message = "Không tìm thấy đơn hàng" });
+
+            order.Status = status;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Cập nhật trạng thái thành công", status = order.Status });
         }
     }
 }

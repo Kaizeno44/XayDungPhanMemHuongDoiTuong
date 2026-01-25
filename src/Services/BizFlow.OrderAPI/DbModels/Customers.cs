@@ -21,5 +21,7 @@ namespace BizFlow.OrderAPI.DbModels
         public string Address { get; set; } = string.Empty;
         
         public decimal CurrentDebt { get; set; } = 0;
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

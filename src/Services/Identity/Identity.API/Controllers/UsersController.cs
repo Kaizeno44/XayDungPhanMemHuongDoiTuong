@@ -24,33 +24,23 @@ namespace Identity.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
-            try
-            {
-                var users = await _context.Users
-                    // Join các bảng lại
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .ToListAsync();
-
-                var result = users.Select(u => new 
+            var users = await _context.Users
+                // Join các bảng lại
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Select(u => new 
                 {
-                    id = u.Id.ToString(), // Chuyển Guid sang string cho an toàn          
+                    id = u.Id,          
                     email = u.Email,
                     fullName = u.FullName,
                     
-                    // Logic: Lấy tên Role đầu tiên nếu có
-                    role = u.UserRoles != null && u.UserRoles.Any() 
-                           ? u.UserRoles.First().Role?.Name ?? "N/A" 
-                           : "N/A",                        
+                    // Logic: Nếu có role thì lấy tên, nếu không thì ghi "N/A"
+                    role = u.UserRoles.Select(ur => ur.Role.Name).FirstOrDefault() ?? "N/A",                        
                     status = u.IsActive ? "Active" : "Inactive"
-                }).ToList();
+                })
+                .ToListAsync();
 
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Lỗi khi tải danh sách: " + ex.Message });
-            }
+            return Ok(users);
         }
 
         // 2. POST: /api/users - Tạo nhân viên mới
@@ -159,28 +149,6 @@ namespace Identity.API.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Lỗi lưu token: " + ex.Message });
-            }
-        }
-
-        // 4. DELETE: /api/users/{id} - Xóa nhân viên
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteUser(Guid id)
-        {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null)
-            {
-                return NotFound(new { message = "Không tìm thấy nhân viên này." });
-            }
-
-            try
-            {
-                _context.Users.Remove(user);
-                await _context.SaveChangesAsync();
-                return Ok(new { message = "Đã xóa nhân viên thành công!" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Lỗi khi xóa nhân viên: " + ex.Message });
             }
         }
     }

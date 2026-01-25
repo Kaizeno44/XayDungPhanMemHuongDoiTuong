@@ -323,5 +323,109 @@ namespace BizFlow.ProductAPI.Controllers
 
             return Ok(lowStockProducts);
         }
+
+        // 3.4 Cập nhật thông tin sản phẩm
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] UpdateProductRequest request)
+        {
+            if (id != request.Id) return BadRequest(new { message = "ID không khớp" });
+
+            var product = await _context.Products
+                .Include(p => p.Inventory)
+                .Include(p => p.ProductUnits)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                product.Name = request.Name;
+                product.Sku = request.Sku;
+                product.CategoryId = request.CategoryId;
+                product.ImageUrl = request.ImageUrl;
+                product.Description = request.Description;
+
+                // Cập nhật tồn kho nếu có truyền vào
+                if (request.InitialStock.HasValue)
+                {
+                    if (product.Inventory == null)
+                    {
+                        product.Inventory = new Inventory { ProductId = id, Quantity = request.InitialStock.Value, LastUpdated = DateTime.UtcNow };
+                        _context.Inventories.Add(product.Inventory);
+                    }
+                    else
+                    {
+                        product.Inventory.Quantity = request.InitialStock.Value;
+                        product.Inventory.LastUpdated = DateTime.UtcNow;
+                    }
+                }
+
+                // Cập nhật đơn vị tính
+                if (request.Units != null)
+                {
+                    foreach (var unitDto in request.Units)
+                    {
+                        if (unitDto.Id.HasValue && unitDto.Id > 0)
+                        {
+                            var existingUnit = product.ProductUnits.FirstOrDefault(u => u.Id == unitDto.Id);
+                            if (existingUnit != null)
+                            {
+                                existingUnit.UnitName = unitDto.UnitName;
+                                existingUnit.Price = unitDto.Price;
+                                existingUnit.ConversionValue = unitDto.ConversionValue;
+                                existingUnit.IsBaseUnit = unitDto.IsBaseUnit;
+                            }
+                        }
+                        else
+                        {
+                            product.ProductUnits.Add(new ProductUnit
+                            {
+                                ProductId = id,
+                                UnitName = unitDto.UnitName,
+                                Price = unitDto.Price,
+                                ConversionValue = unitDto.ConversionValue,
+                                IsBaseUnit = unitDto.IsBaseUnit
+                            });
+                        }
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // Thông báo cập nhật qua SignalR
+                if (request.InitialStock.HasValue)
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", id, product.Inventory.Quantity);
+                }
+
+                return Ok(new { message = "Cập nhật sản phẩm thành công" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi hệ thống: " + ex.Message });
+            }
+        }
+
+        // 3.5 Xóa sản phẩm
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
+
+            try
+            {
+                _context.Products.Remove(product);
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "Xóa sản phẩm thành công" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Không thể xóa sản phẩm. Có thể sản phẩm đã có trong đơn hàng hoặc dữ liệu liên quan khác." });
+            }
+        }
     }
 }

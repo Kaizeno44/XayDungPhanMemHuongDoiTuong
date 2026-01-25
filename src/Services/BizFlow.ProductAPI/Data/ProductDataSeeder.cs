@@ -15,9 +15,9 @@ namespace BizFlow.ProductAPI.Data
             // 2. Seed Categories (Danh mục)
             if (!await context.Categories.AnyAsync())
             {
-                var cat1 = new Category { Name = "Vật liệu xây dựng", Code = "VL_XD", Description = "Các loại vật liệu thô dùng trong xây dựng" };
-                var cat2 = new Category { Name = "Điện nước", Code = "DIEN_NUOC", Description = "Thiết bị và vật tư ngành điện, nước" };
-                var cat3 = new Category { Name = "Sơn & Hóa chất", Code = "SON_HC", Description = "Các loại sơn nội ngoại thất và hóa chất xây dựng" };
+                var cat1 = new Category { Name = "Vật liệu xây dựng", Code = "VL_XD" };
+                var cat2 = new Category { Name = "Điện nước", Code = "DIEN_NUOC" };
+                var cat3 = new Category { Name = "Sơn & Hóa chất", Code = "SON_HC" };
                 
                 context.Categories.AddRange(cat1, cat2, cat3);
                 await context.SaveChangesAsync();

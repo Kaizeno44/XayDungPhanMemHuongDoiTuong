@@ -11,6 +11,7 @@ namespace BizFlow.ProductAPI.DTOs
         public string? Description { get; set; }
         public int CategoryId { get; set; }
         public bool IsActive { get; set; }
+        public double? InitialStock { get; set; } // Thêm trường này để cập nhật tồn kho từ Web
 
         // Danh sách đơn vị tính và giá bán cập nhật
         public List<ProductUnitUpdateDto>? Units { get; set; }

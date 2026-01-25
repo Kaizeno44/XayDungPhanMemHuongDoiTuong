@@ -56,7 +56,29 @@ export default function OrdersPage() {
       const response = await axios.get(`http://localhost:5000/api/orders/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSelectedOrder(response.data);
+      
+      const orderData = response.data;
+      const items = orderData.orderItems || orderData.OrderItems || [];
+
+      // Lấy tên sản phẩm động từ ProductAPI (Vì API gốc không trả về tên)
+      const itemsWithNames = await Promise.all(items.map(async (item) => {
+        try {
+          const pRes = await axios.get(`http://localhost:5000/api/products/${item.productId || item.ProductId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const product = pRes.data;
+          const unit = product.productUnits?.find(u => u.id === (item.unitId || item.UnitId));
+          return {
+            ...item,
+            productName: product.name,
+            unitName: unit?.unitName || "N/A"
+          };
+        } catch (e) {
+          return { ...item, productName: `Sản phẩm #${item.productId || item.ProductId}`, unitName: "N/A" };
+        }
+      }));
+
+      setSelectedOrder({ ...orderData, orderItems: itemsWithNames });
       setIsModalVisible(true);
     } catch (err) {
       console.error("Lỗi tải chi tiết đơn hàng:", err);

@@ -40,7 +40,7 @@ namespace BizFlow.OrderAPI.Controllers
                 // 3. Lấy đơn hàng TRONG THÁNG (Chỉ lấy đơn đã xác nhận - Confirmed)
                 // Thử lọc theo StoreId trước
                 var monthlyOrders = await _context.Orders
-                    .Where(o => o.StoreId == storeId && 
+                    .Where(o => (storeId == null || storeId == Guid.Empty || o.StoreId == storeId) && 
                                 o.Status == "Confirmed" && 
                                 o.OrderDate >= firstDayOfMonthUtc && 
                                 o.OrderDate < endOfMonthUtc)
@@ -56,11 +56,6 @@ namespace BizFlow.OrderAPI.Controllers
                                     o.OrderDate < endOfMonthUtc)
                         .Select(o => new { o.OrderDate, o.TotalAmount })
                         .ToListAsync();
-                    Console.WriteLine($"--> Dashboard: Không tìm thấy đơn Confirmed cho Store {storeId}, lấy toàn bộ {monthlyOrders.Count} đơn Confirmed.");
-                }
-                else
-                {
-                    Console.WriteLine($"--> Dashboard: Tìm thấy {monthlyOrders.Count} đơn cho Store {storeId}.");
                 }
                 
                 var monthRevenue = monthlyOrders.Sum(x => x.TotalAmount);
@@ -94,10 +89,9 @@ namespace BizFlow.OrderAPI.Controllers
                     .ToList();
 
                 // 6. Top 5 Sản phẩm TRONG THÁNG (Chỉ tính đơn Confirmed)
-                // Thử lọc theo StoreId trước
                 var topProductStats = await _context.OrderItems
                     .Include(oi => oi.Order)
-                    .Where(oi => oi.Order.StoreId == storeId && 
+                    .Where(oi => (storeId == null || storeId == Guid.Empty || oi.Order.StoreId == storeId) && 
                                  oi.Order.Status == "Confirmed" && 
                                  oi.Order.OrderDate >= firstDayOfMonthUtc && 
                                  oi.Order.OrderDate < endOfMonthUtc)
@@ -132,24 +126,22 @@ namespace BizFlow.OrderAPI.Controllers
                         .ToListAsync();
                 }
 
-                // Map tên sản phẩm (Gọi sang Product Service)
+                // Map tên sản phẩm
                 var topProducts = new List<object>();
                 foreach (var item in topProductStats)
                 {
                     string productName = $"Sản phẩm #{item.ProductId}";
                     try 
                     {
-                        var p = await _productService.GetProductByIdAsync(item.ProductId);
-                        if(p != null) productName = p.Name;
+                        // Gọi Product Service để lấy tên thật (Nếu bạn đã setup ProductServiceClient)
+                        // var p = await _productService.GetProductById(item.ProductId);
+                        // if(p != null) productName = p.Name;
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"--> Dashboard: Lỗi lấy tên SP {item.ProductId}: {ex.Message}");
-                    }
+                    catch {}
 
                     topProducts.Add(new
                     {
-                        ProductId = item.ProductId,
+                        item.ProductId,
                         ProductName = productName,
                         TotalSold = item.TotalSold,
                         TotalRevenue = item.TotalRevenue

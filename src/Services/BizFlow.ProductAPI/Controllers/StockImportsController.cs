@@ -17,19 +17,19 @@ namespace BizFlow.ProductAPI.Controllers
     // ==========================================
     public class BulkImportRequest
     {
-        public Guid StoreId { get; set; }
+        public object? StoreId { get; set; } // Dùng object để nhận mọi kiểu dữ liệu từ App
         public string? Note { get; set; } // Cho phép null
         public List<ImportDetailDto> Details { get; set; } = new List<ImportDetailDto>(); // Khởi tạo để tránh null
     }
 
     public class ImportDetailDto
     {
-        public int ProductId { get; set; }
-        public int UnitId { get; set; }
-        public int ProductUnitId { get; set; }
-        public double Quantity { get; set; }
-        public decimal UnitCost { get; set; }
-        public string? SupplierName { get; set; } // Cho phép null
+        public object? ProductId { get; set; }
+        public object? UnitId { get; set; }
+        public object? ProductUnitId { get; set; }
+        public object? Quantity { get; set; }
+        public object? UnitCost { get; set; }
+        public object? SupplierName { get; set; }
     }
 
     public class StockImportDto
@@ -99,10 +99,21 @@ namespace BizFlow.ProductAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateImport([FromBody] BulkImportRequest request)
         {
-            if (request.StoreId == Guid.Empty)
-                return BadRequest(new { message = "Thiếu StoreId" });
+            // 1. Kiểm tra request null
+            if (request == null) return BadRequest(new { message = "Dữ liệu gửi lên không hợp lệ (null)" });
 
-            if (request.Details == null || request.Details.Count == 0)
+            // 2. Xử lý StoreId linh hoạt
+            Guid finalStoreId = Guid.Parse("01ada08b-bd61-4fc6-8b70-fe958d463cc9"); // Mặc định Ba Tèo
+            if (request.StoreId != null)
+            {
+                string storeIdStr = request.StoreId.ToString();
+                if (Guid.TryParse(storeIdStr, out Guid parsedGuid) && parsedGuid != Guid.Empty)
+                {
+                    finalStoreId = parsedGuid;
+                }
+            }
+
+            if (request.Details == null || !request.Details.Any())
                 return BadRequest(new { message = "Danh sách nhập hàng trống" });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -110,36 +121,50 @@ namespace BizFlow.ProductAPI.Controllers
             {
                 foreach (var item in request.Details)
                 {
-                    // 1. Xử lý ID: Ưu tiên UnitId, nếu = 0 thì lấy ProductUnitId
-                    int finalUnitId = item.UnitId != 0 ? item.UnitId : item.ProductUnitId;
+                    // 3. Parse các giá trị số linh hoạt (Sửa lỗi 400)
+                    string pidStr = item.ProductId?.ToString() ?? "0";
+                    string qtyStr = item.Quantity?.ToString() ?? "0";
+                    string costStr = item.UnitCost?.ToString() ?? "0";
+                    string uidStr = item.UnitId?.ToString() ?? "0";
+                    string puidStr = item.ProductUnitId?.ToString() ?? "0";
 
-                    // 2. Tìm sản phẩm
+                    int.TryParse(pidStr, out int pid);
+                    double.TryParse(qtyStr, out double qty);
+                    double.TryParse(costStr, out double cost);
+                    int.TryParse(uidStr, out int uid);
+                    int.TryParse(puidStr, out int puid);
+
+                    // 4. Tìm sản phẩm
                     var product = await _context.Products
                         .Include(p => p.Inventory)
-                        .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+                        .Include(p => p.ProductUnits)
+                        .FirstOrDefaultAsync(p => p.Id == pid);
 
                     if (product == null)
-                        throw new Exception($"Sản phẩm ID {item.ProductId} không tồn tại");
+                        throw new Exception($"Không tìm thấy sản phẩm ID {pid}");
 
-                    // 3. Tìm Unit
-                    var unit = await _context.ProductUnits.FirstOrDefaultAsync(u => u.Id == finalUnitId);
+                    // 5. Xử lý UnitId linh hoạt
+                    int finalUnitId = uid != 0 ? uid : puid;
+                    var unit = product.ProductUnits.FirstOrDefault(u => u.Id == finalUnitId);
                     
                     if (unit == null)
                     {
-                         unit = await _context.ProductUnits.FirstOrDefaultAsync(u => u.ProductId == item.ProductId && u.IsBaseUnit);
-                         if (unit == null) throw new Exception($"Đơn vị tính ID {finalUnitId} không hợp lệ cho SP {product.Name}");
+                        unit = product.ProductUnits.FirstOrDefault(u => u.IsBaseUnit) 
+                               ?? product.ProductUnits.FirstOrDefault();
+                        
+                        if (unit == null) throw new Exception($"Sản phẩm {product.Name} chưa được thiết lập đơn vị tính");
                     }
 
-                    // 4. Tạo phiếu nhập
+                    // 6. Tạo phiếu nhập
                     var stockImport = new StockImport
                     {
-                        ProductId = item.ProductId,
+                        ProductId = product.Id,
                         UnitId = unit.Id,
-                        Quantity = item.Quantity,
-                        CostPrice = (double)item.UnitCost, // [SỬA] Giữ nguyên decimal, không ép kiểu double
+                        Quantity = qty,
+                        CostPrice = cost,
                         SupplierName = item.SupplierName ?? "Kho tổng",
                         Note = request.Note,
-                        StoreId = request.StoreId,
+                        StoreId = finalStoreId,
                         ImportDate = DateTime.UtcNow
                     };
                     _context.StockImports.Add(stockImport);

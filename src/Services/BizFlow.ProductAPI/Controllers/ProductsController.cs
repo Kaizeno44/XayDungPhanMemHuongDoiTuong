@@ -228,7 +228,6 @@ namespace BizFlow.ProductAPI.Controllers
             }
         }
 
-
         // 3.2 CẬP NHẬT KHO THÔNG MINH (Smart Update Stock)
         // 👉 ĐÂY LÀ PHẦN QUAN TRỌNG NHẤT CHO PERSON C
         // PUT: /api/Products/stock?mode=out
@@ -323,6 +322,102 @@ namespace BizFlow.ProductAPI.Controllers
                 .ToListAsync();
 
             return Ok(lowStockProducts);
+        }
+
+        // 3.4 Cập nhật thông tin sản phẩm
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] UpdateProductRequest request)
+        {
+            if (id != request.Id) return BadRequest(new { message = "ID không khớp" });
+
+            var product = await _context.Products
+                .Include(p => p.ProductUnits)
+                .Include(p => p.Inventory)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                product.Name = request.Name;
+                product.Sku = request.Sku;
+                product.CategoryId = request.CategoryId;
+                product.ImageUrl = request.ImageUrl;
+                product.Description = request.Description;
+                product.IsActive = request.IsActive;
+
+                // Cập nhật tồn kho nếu có gửi lên
+                if (request.InitialStock.HasValue)
+                {
+                    var inventory = await _context.Inventories.FirstOrDefaultAsync(i => i.ProductId == product.Id);
+                    if (inventory == null)
+                    {
+                        inventory = new Inventory
+                        {
+                            ProductId = product.Id,
+                            Quantity = request.InitialStock.Value,
+                            LastUpdated = DateTime.UtcNow
+                        };
+                        _context.Inventories.Add(inventory);
+                    }
+                    else
+                    {
+                        inventory.Quantity = request.InitialStock.Value;
+                        inventory.LastUpdated = DateTime.UtcNow;
+                        _context.Entry(inventory).State = EntityState.Modified;
+                    }
+                    // Không gọi SaveChanges ở đây, để nó lưu cùng Product ở cuối
+                }
+
+                if (request.Units != null)
+                {
+                    foreach (var uReq in request.Units)
+                    {
+                        var unit = product.ProductUnits.FirstOrDefault(x => 
+                            (uReq.Id.HasValue && x.Id == uReq.Id.Value) || 
+                            (uReq.IsBaseUnit && x.IsBaseUnit));
+
+                        if (unit != null)
+                        {
+                            unit.UnitName = uReq.UnitName;
+                            unit.Price = uReq.Price;
+                            unit.ConversionValue = uReq.ConversionValue;
+                            if (uReq.IsBaseUnit) product.BaseUnit = uReq.UnitName;
+                            _context.Entry(unit).State = EntityState.Modified;
+                        }
+                        else
+                        {
+                            _context.ProductUnits.Add(new ProductUnit
+                            {
+                                ProductId = id,
+                                UnitName = uReq.UnitName,
+                                Price = uReq.Price,
+                                ConversionValue = uReq.ConversionValue,
+                                IsBaseUnit = uReq.IsBaseUnit
+                            });
+                            if (uReq.IsBaseUnit) product.BaseUnit = uReq.UnitName;
+                        }
+                    }
+                }
+
+                _context.Products.Update(product);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // Phát sóng cập nhật tồn kho qua SignalR nếu có thay đổi
+                if (request.InitialStock.HasValue && product.Inventory != null)
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", product.Id, product.Inventory.Quantity);
+                }
+
+                return Ok(new { message = "Cập nhật sản phẩm thành công" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi hệ thống: " + ex.Message });
+            }
         }
     }
 }

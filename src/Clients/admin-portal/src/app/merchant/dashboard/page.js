@@ -65,33 +65,44 @@ export default function MerchantDashboard() {
         const data = dashboardStatsRes.value.data;
         console.log("Dashboard Stats Data:", data);
         
-        // Chuẩn hóa dữ liệu biểu đồ (Normalize to camelCase and ensure Numbers)
+        // Chuẩn hóa dữ liệu biểu đồ
         const rawRevenue = data.weeklyRevenue || data.WeeklyRevenue || [];
         const normalizedRevenue = rawRevenue.map(item => ({
           dayName: item.dayName || item.DayName,
           amount: Number(item.amount || item.Amount || 0)
         }));
 
-        // Chuẩn hóa Top Products
+        // Chuẩn hóa Top Products và lấy tên thật từ ProductAPI
         const rawTopProducts = data.topProducts || data.TopProducts || [];
-        const normalizedTopProducts = rawTopProducts.map(p => ({
-          productId: p.productId || p.ProductId,
-          productName: p.productName || p.ProductName,
-          totalSold: p.totalSold || p.TotalSold || 0,
-          totalRevenue: p.totalRevenue || p.TotalRevenue || 0
-        }));
+        const normalizedTopProducts = await Promise.all(rawTopProducts.map(async (p) => {
+          const pid = p.productId || p.ProductId;
+          let name = p.productName || p.ProductName;
+          
+          // Nếu tên là mặc định (Sản phẩm #ID), thử lấy tên thật
+          if (!name || name.startsWith("Sản phẩm #")) {
+            try {
+              const pRes = await axios.get(`http://localhost:5000/api/products/${pid}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              name = pRes.data.name;
+            } catch (e) {}
+          }
 
-        const todayOrdersCount = data.todayOrdersCount || data.TodayOrdersCount || 0;
-        const todayRevenue = data.todayRevenue || data.TodayRevenue || 0;
-        const totalDebt = data.totalDebt || data.TotalDebt || 0;
+          return {
+            productId: pid,
+            productName: name,
+            totalSold: p.totalSold || p.TotalSold || 0,
+            totalRevenue: p.totalRevenue || p.TotalRevenue || 0
+          };
+        }));
 
         setRevenueData(normalizedRevenue);
         setTopProducts(normalizedTopProducts);
         setSummaryStats(prev => ({
           ...prev,
-          orders: todayOrdersCount,
-          todayRevenue: todayRevenue,
-          debt: totalDebt
+          orders: data.todayOrdersCount || data.TodayOrdersCount || 0,
+          todayRevenue: data.todayRevenue || data.TodayRevenue || 0,
+          debt: data.totalDebt || data.TotalDebt || 0
         }));
       }
 

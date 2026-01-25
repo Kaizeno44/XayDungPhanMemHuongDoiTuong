@@ -60,11 +60,11 @@ namespace BizFlow.OrderAPI.Controllers
                     })
                     .ToList();
 
-                // 5. Top 5 sản phẩm bán chạy nhất tháng
+                // 5. Top 5 sản phẩm bán chạy nhất tháng (Chỉ tính đơn Confirmed)
                 var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
                 var topProducts = await _context.OrderItems
                     .Include(oi => oi.Order)
-                    .Where(oi => oi.Order.OrderDate >= firstDayOfMonth)
+                    .Where(oi => oi.Order.OrderDate >= firstDayOfMonth && oi.Order.Status == "Confirmed")
                     .GroupBy(oi => oi.ProductId)
                     .Select(g => new
                     {

@@ -50,7 +50,7 @@ export default function ReportsPage() {
         receiptDate: new Date().toISOString(),
         bookNumber: "BK-2026",
         receiptNumber: record.id.substring(0, 8).toUpperCase(),
-        payerName: "Khách hàng ID: " + record.customerId,
+        payerName: record.customerName || ("Khách hàng ID: " + record.customerId),
         payerAddress: "Địa chỉ khách hàng",
         reasonForPayment: record.reason || "Thanh toán đơn hàng",
         amount: amount,

@@ -203,5 +203,24 @@ namespace BizFlow.OrderAPI.Controllers
                 return StatusCode(500, $"Lỗi xử lý đơn hàng: {ex.Message}");
             }
         }
+
+        // [PUT] Cập nhật trạng thái đơn hàng (Xác nhận đơn)
+        [HttpPut("{id}/status")]
+        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromQuery] string status)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null) return NotFound("Không tìm thấy đơn hàng.");
+
+            try
+            {
+                order.Status = status;
+                await _context.SaveChangesAsync();
+                return Ok(new { Message = $"Đã cập nhật trạng thái đơn hàng sang {status}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Lỗi cập nhật trạng thái: {ex.Message}");
+            }
+        }
     }
 }

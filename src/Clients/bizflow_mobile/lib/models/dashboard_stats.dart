@@ -1,67 +1,8 @@
-import 'package:json_annotation/json_annotation.dart';
-
-part 'dashboard_stats.g.dart';
-
-@JsonSerializable()
-class DailyRevenue {
-  // Backend trả về: "dayName"
-  final String dayName;
-
-  // Backend trả về: "amount" (chữ thường)
-  // SỬA: Đổi từ 'Amount' thành 'amount' hoặc bỏ luôn @JsonKey cũng được
-  @JsonKey(name: 'amount')
-  final double amount;
-
-  DailyRevenue(this.dayName, this.amount);
-
-  factory DailyRevenue.fromJson(Map<String, dynamic> json) =>
-      _$DailyRevenueFromJson(json);
-  Map<String, dynamic> toJson() => _$DailyRevenueToJson(this);
-}
-
-@JsonSerializable()
-class TopProduct {
-  final int productId;
-
-  // Backend có thể không trả về productName nếu truy vấn LINQ chưa Include đúng,
-  // nên cho phép null (String?) để an toàn.
-  final String? productName;
-
-  // Backend trả về: "totalQuantity"
-  @JsonKey(name: 'totalQuantity')
-  final double totalSold;
-
-  // Backend trả về: "totalRevenue"
-  @JsonKey(name: 'totalRevenue')
-  final double totalRevenue;
-
-  TopProduct(
-    this.productId,
-    this.productName,
-    this.totalSold,
-    this.totalRevenue,
-  );
-
-  factory TopProduct.fromJson(Map<String, dynamic> json) =>
-      _$TopProductFromJson(json);
-  Map<String, dynamic> toJson() => _$TopProductToJson(this);
-}
-
-@JsonSerializable()
 class DashboardStats {
-  // Backend trả về: "todayRevenue"
   final double todayRevenue;
-
-  // Backend trả về: "todayOrdersCount"
-  final int todayOrdersCount; // Sửa tên biến cho khớp luôn để đỡ dùng @JsonKey
-
-  // Backend trả về: "totalDebt"
+  final int todayOrdersCount;
   final double totalDebt;
-
-  // Backend trả về: "weeklyRevenue"
   final List<DailyRevenue> weeklyRevenue;
-
-  // Backend trả về: "topProducts"
   final List<TopProduct> topProducts;
 
   DashboardStats({
@@ -72,7 +13,110 @@ class DashboardStats {
     required this.topProducts,
   });
 
-  factory DashboardStats.fromJson(Map<String, dynamic> json) =>
-      _$DashboardStatsFromJson(json);
-  Map<String, dynamic> toJson() => _$DashboardStatsToJson(this);
+  // 1. Factory rỗng
+  factory DashboardStats.empty() {
+    return DashboardStats(
+      todayRevenue: 0,
+      todayOrdersCount: 0,
+      totalDebt: 0,
+      weeklyRevenue: [],
+      topProducts: [],
+    );
+  }
+
+  // 2. Factory từ JSON (FIX LỖI SUBTYPE TẠI ĐÂY)
+  factory DashboardStats.fromJson(Map<String, dynamic> json) {
+    return DashboardStats(
+      todayRevenue: _parseSafeDouble(
+        json['todayRevenue'] ?? json['TodayRevenue'],
+      ),
+
+      todayOrdersCount: _parseSafeInt(
+        json['todayOrdersCount'] ??
+            json['TodayOrdersCount'] ??
+            json['todayOrders'],
+      ),
+
+      totalDebt: _parseSafeDouble(json['totalDebt'] ?? json['TotalDebt']),
+
+      // [FIX QUAN TRỌNG] Sử dụng List<T>.from(...)
+      // Thay vì .toList(), ta dùng List.from để ép kiểu danh sách tường minh
+      weeklyRevenue: List<DailyRevenue>.from(
+        (json['weeklyRevenue'] ?? json['WeeklyRevenue'] as List? ?? []).map(
+          (x) => DailyRevenue.fromJson(x),
+        ),
+      ),
+
+      // [FIX QUAN TRỌNG] Tương tự với TopProducts
+      topProducts: List<TopProduct>.from(
+        (json['topProducts'] ?? json['TopProducts'] as List? ?? []).map(
+          (x) => TopProduct.fromJson(x),
+        ),
+      ),
+    );
+  }
+}
+
+// --- CLASS CON ---
+
+class DailyRevenue {
+  final String dayName;
+  final double amount;
+
+  DailyRevenue(this.dayName, this.amount);
+
+  // [NÂNG CẤP] Nhận dynamic thay vì Map để tránh lỗi cast
+  factory DailyRevenue.fromJson(dynamic json) {
+    if (json == null || json is! Map) return DailyRevenue('', 0);
+
+    return DailyRevenue(
+      json['dayName'] ?? json['DayName'] ?? '',
+      _parseSafeDouble(json['amount'] ?? json['Amount']),
+    );
+  }
+}
+
+class TopProduct {
+  final int productId;
+  final String productName;
+  final double totalSold;
+  final double totalRevenue;
+
+  TopProduct(
+    this.productId,
+    this.productName,
+    this.totalSold,
+    this.totalRevenue,
+  );
+
+  // [NÂNG CẤP] Nhận dynamic thay vì Map
+  factory TopProduct.fromJson(dynamic json) {
+    if (json == null || json is! Map) return TopProduct(0, 'Unknown', 0, 0);
+
+    final pId = _parseSafeInt(json['productId'] ?? json['ProductId']);
+    return TopProduct(
+      pId,
+      json['productName'] ?? json['ProductName'] ?? 'SP #$pId',
+      _parseSafeDouble(
+        json['totalQuantity'] ?? json['TotalQuantity'] ?? json['totalSold'],
+      ),
+      _parseSafeDouble(json['totalRevenue'] ?? json['TotalRevenue']),
+    );
+  }
+}
+
+// --- CÁC HÀM PARSE AN TOÀN (PRIVATE) ---
+
+double _parseSafeDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0.0;
+  return 0.0;
+}
+
+int _parseSafeInt(dynamic value) {
+  if (value == null) return 0;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }

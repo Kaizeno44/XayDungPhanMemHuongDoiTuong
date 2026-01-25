@@ -7,7 +7,7 @@ import '../providers/auth_provider.dart';
 import '../models/dashboard_stats.dart';
 import '../services/dashboard_service.dart';
 
-// Import Widget biểu đồ mới tạo
+// Import Widget biểu đồ
 import '../widgets/weekly_revenue_chart.dart';
 
 class OwnerDashboardScreen extends ConsumerStatefulWidget {
@@ -26,10 +26,13 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchRealData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchRealData();
+    });
   }
 
   Future<void> _fetchRealData() async {
+    // [SỬA LỖI] Dùng authNotifierProvider thay vì authProvider
     final authState = ref.read(authNotifierProvider);
     final storeId = authState.currentUser?.storeId;
 
@@ -48,24 +51,27 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // [SỬA LỖI] Dùng authNotifierProvider thay vì authProvider
     final currentUser = ref.watch(authNotifierProvider).currentUser;
     final currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: '₫');
 
     // Dữ liệu an toàn
     final revenue = _stats?.todayRevenue ?? 0;
     final newOrders = _stats?.todayOrdersCount ?? 0;
-    final lowStock = 0; // Tạm thời
     final totalDebt = _stats?.totalDebt ?? 0;
-
-    // Lấy dữ liệu biểu đồ
     final weeklyData = _stats?.weeklyRevenue ?? [];
+    final topProducts = _stats?.topProducts ?? [];
 
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('Tổng quan cửa hàng'),
-        backgroundColor: Colors.orange[800],
+        title: const Text(
+          'Tổng quan cửa hàng',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -76,7 +82,6 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
           ),
         ],
       ),
-      backgroundColor: Colors.grey[50],
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -88,18 +93,42 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // 1. Header Chào hỏi
-                    Text(
-                      'Xin chào, ${currentUser?.fullName ?? 'Chủ cửa hàng'}! 👋',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Hôm nay: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
-                      style: TextStyle(color: Colors.grey[600]),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Colors.blue.shade100,
+                          child: Text(
+                            (currentUser?.fullName ?? 'A')[0].toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Xin chào, ${currentUser?.fullName ?? 'Chủ cửa hàng'}!',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              DateFormat(
+                                'EEEE, dd/MM/yyyy',
+                                'vi',
+                              ).format(DateTime.now()),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 24),
@@ -113,6 +142,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                             value: currencyFormat.format(revenue),
                             icon: Icons.attach_money,
                             color: Colors.green,
+                            gradientColors: [
+                              Colors.green.shade400,
+                              Colors.green.shade600,
+                            ],
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -122,54 +155,44 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                             value: '$newOrders',
                             icon: Icons.receipt_long,
                             color: Colors.blue,
+                            gradientColors: [
+                              Colors.blue.shade400,
+                              Colors.blue.shade600,
+                            ],
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            title: 'Sản phẩm sắp hết',
-                            value: '$lowStock',
-                            icon: Icons.warning_amber_rounded,
-                            color: Colors.orange,
-                            isWarning: lowStock > 0,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            title: 'Khách nợ',
-                            value: currencyFormat.format(totalDebt),
-                            icon: Icons.person_off,
-                            color: Colors.red,
-                          ),
-                        ),
+                    _buildStatCard(
+                      title: 'Tổng nợ khách hàng',
+                      value: currencyFormat.format(totalDebt),
+                      icon: Icons.account_balance_wallet,
+                      color: Colors.orange,
+                      isFullWidth: true,
+                      gradientColors: [
+                        Colors.orange.shade400,
+                        Colors.orange.shade600,
                       ],
                     ),
 
                     const SizedBox(height: 32),
 
-                    // 3. BIỂU ĐỒ DOANH THU (ĐÃ CẬP NHẬT)
+                    // 3. BIỂU ĐỒ DOANH THU
                     const Text(
-                      "Biểu đồ doanh thu tuần này",
+                      "Doanh thu 7 ngày qua",
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
                       ),
                     ),
-                    const SizedBox(height: 16),
-
+                    const SizedBox(height: 12),
                     Container(
-                      height: 300, // Chiều cao biểu đồ
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                      height: 300,
+                      padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.grey.withOpacity(0.1),
@@ -178,11 +201,89 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                           ),
                         ],
                       ),
-                      // Gọi Widget Biểu đồ tại đây
-                      child: WeeklyRevenueChart(weeklyData: weeklyData),
+                      child: weeklyData.isEmpty
+                          ? const Center(
+                              child: Text("Chưa có dữ liệu tuần này"),
+                            )
+                          : WeeklyRevenueChart(weeklyData: weeklyData),
                     ),
 
-                    const SizedBox(height: 50), // Khoảng trống dưới cùng
+                    const SizedBox(height: 32),
+
+                    // 4. TOP SẢN PHẨM BÁN CHẠY
+                    const Text(
+                      "Sản phẩm bán chạy tháng này",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: topProducts.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(
+                                child: Text("Chưa có dữ liệu bán hàng"),
+                              ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: topProducts.length,
+                              separatorBuilder: (ctx, i) => const Divider(
+                                height: 1,
+                                indent: 16,
+                                endIndent: 16,
+                              ),
+                              itemBuilder: (ctx, i) {
+                                final product = topProducts[i];
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.blue.shade50,
+                                    child: Text(
+                                      "${i + 1}",
+                                      style: TextStyle(
+                                        color: Colors.blue.shade800,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    product.productName ??
+                                        "Sản phẩm #${product.productId}",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    "Đã bán: ${product.totalSold.toStringAsFixed(0)}",
+                                  ),
+                                  trailing: Text(
+                                    currencyFormat.format(product.totalRevenue),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 50),
                   ],
                 ),
               ),
@@ -195,20 +296,23 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     required String value,
     required IconData icon,
     required Color color,
-    bool isWarning = false,
+    required List<Color> gradientColors,
+    bool isFullWidth = false,
   }) {
     return Container(
+      width: isFullWidth ? double.infinity : null,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: isWarning
-            ? Border.all(color: Colors.orange.withOpacity(0.5), width: 2)
-            : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.05),
-            blurRadius: 10,
+            color: gradientColors.last.withOpacity(0.4),
+            blurRadius: 8,
             offset: const Offset(0, 4),
           ),
         ],
@@ -216,27 +320,42 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: Colors.white, size: 24),
+              ),
+              if (isFullWidth)
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white54,
+                  size: 16,
+                ),
+            ],
           ),
           const SizedBox(height: 16),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: Colors.white,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          Text(title, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white.withOpacity(0.9),
+            ),
+          ),
         ],
       ),
     );

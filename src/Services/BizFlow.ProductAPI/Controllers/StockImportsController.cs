@@ -46,63 +46,96 @@ namespace BizFlow.ProductAPI.Controllers
             return Ok(imports);
         }
 
-        // 2. Tạo phiếu nhập kho (Quan trọng nhất)
+        // 2. Tạo phiếu nhập kho (Bulk Import - Hỗ trợ nhập nhiều món)
         [HttpPost]
         public async Task<IActionResult> CreateImport([FromBody] CreateStockImportRequest request)
         {
+            // Kiểm tra dữ liệu đầu vào
+            if (request.Details == null || !request.Details.Any())
+            {
+                return BadRequest(new { message = "Danh sách sản phẩm nhập kho trống!" });
+            }
+
+            // Bắt đầu transaction để đảm bảo tính toàn vẹn dữ liệu
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // 1. Kiểm tra sản phẩm và đơn vị
-                var product = await _context.Products
-                    .Include(p => p.Inventory)
-                    .FirstOrDefaultAsync(p => p.Id == request.ProductId);
-                
-                if (product == null) return NotFound(new { message = "Sản phẩm không tồn tại" });
+                var createdImportIds = new List<int>();
 
-                var unit = await _context.ProductUnits
-                    .FirstOrDefaultAsync(u => u.Id == request.UnitId && u.ProductId == request.ProductId);
-                
-                if (unit == null) return BadRequest(new { message = "Đơn vị tính không hợp lệ" });
-
-                // 2. Lưu phiếu nhập
-                var stockImport = new StockImport
+                // Duyệt qua từng sản phẩm trong danh sách gửi lên
+                foreach (var item in request.Details)
                 {
-                    ProductId = request.ProductId,
-                    UnitId = request.UnitId,
-                    Quantity = request.Quantity,
-                    CostPrice = request.CostPrice,
-                    SupplierName = request.SupplierName,
-                    Note = request.Note,
-                    StoreId = request.StoreId,
-                    ImportDate = DateTime.UtcNow
-                };
-                _context.StockImports.Add(stockImport);
-
-                // 3. Cập nhật tồn kho
-                if (product.Inventory == null)
-                {
-                    product.Inventory = new Inventory
+                    // 1. Kiểm tra sản phẩm có tồn tại không
+                    var product = await _context.Products
+                        .Include(p => p.Inventory)
+                        .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+                    
+                    if (product == null) 
                     {
-                        ProductId = product.Id,
-                        Quantity = 0,
-                        LastUpdated = DateTime.UtcNow
-                    };
-                    _context.Inventories.Add(product.Inventory);
-                }
+                        // Rollback nếu có bất kỳ sản phẩm nào lỗi
+                        await transaction.RollbackAsync(); 
+                        return NotFound(new { message = $"Sản phẩm ID {item.ProductId} không tồn tại" });
+                    }
 
-                // Quy đổi số lượng về đơn vị gốc
-                double quantityInBaseUnit = request.Quantity * unit.ConversionValue;
-                product.Inventory.Quantity += quantityInBaseUnit;
-                product.Inventory.LastUpdated = DateTime.UtcNow;
+                    // 2. Kiểm tra đơn vị tính
+                    var unit = await _context.ProductUnits
+                        .FirstOrDefaultAsync(u => u.Id == item.UnitId && u.ProductId == item.ProductId);
+                    
+                    if (unit == null) 
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new { message = $"Đơn vị tính không hợp lệ cho sản phẩm: {product.Name}" });
+                    }
+
+                    // 3. Tạo phiếu nhập (StockImport Record)
+                    var stockImport = new StockImport
+                    {
+                        ProductId = item.ProductId,
+                        UnitId = item.UnitId,
+                        Quantity = item.Quantity,
+                        CostPrice = item.UnitCost, // Map từ UnitCost
+                        SupplierName = request.SupplierName ?? "N/A",
+                        Note = request.Notes,      // Dùng chung ghi chú cho cả đơn
+                        StoreId = request.StoreId,
+                        ImportDate = DateTime.UtcNow
+                    };
+                    _context.StockImports.Add(stockImport);
+
+                    // 4. Cập nhật tồn kho (Inventory)
+                    if (product.Inventory == null)
+                    {
+                        product.Inventory = new Inventory
+                        {
+                            ProductId = product.Id,
+                            Quantity = 0,
+                            LastUpdated = DateTime.UtcNow
+                        };
+                        _context.Inventories.Add(product.Inventory);
+                    }
+
+                    // Quy đổi số lượng về đơn vị gốc và cộng dồn
+                    double quantityInBaseUnit = item.Quantity * unit.ConversionValue;
+                    product.Inventory.Quantity += quantityInBaseUnit;
+                    product.Inventory.LastUpdated = DateTime.UtcNow;
+
+                    // Lưu tạm thời để lấy ID cho lần lặp sau (nếu cần) hoặc để EF theo dõi
+                    // Tuy nhiên SaveChangesAsync cuối cùng sẽ hiệu quả hơn, 
+                    // nhưng ta cần ImportId nếu muốn trả về chi tiết. 
+                    // Ở đây ta gom SaveChanges xuống cuối để tối ưu.
+
+                    // 5. Gửi Realtime Update (SignalR) cho client biết tồn kho mới ngay lập tức
+                    await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", product.Id, product.Inventory.Quantity);
+                }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                // 4. Phát sóng cập nhật qua SignalR
-                await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", product.Id, product.Inventory.Quantity);
-
-                return Ok(new { message = "Nhập kho thành công", importId = stockImport.Id, newQuantity = product.Inventory.Quantity });
+                return Ok(new 
+                { 
+                    message = "Nhập kho thành công", 
+                    count = request.Details.Count,
+                    storeId = request.StoreId 
+                });
             }
             catch (Exception ex)
             {

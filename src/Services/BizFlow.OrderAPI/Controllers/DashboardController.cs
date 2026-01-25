@@ -15,29 +15,35 @@ namespace BizFlow.OrderAPI.Controllers
             _context = context;
         }
 
+        // Thêm tham số [FromQuery] Guid storeId
         [HttpGet("stats")]
-        public async Task<IActionResult> GetDashboardStats()
+        public async Task<IActionResult> GetDashboardStats([FromQuery] Guid storeId)
         {
             try
             {
+                // Kiểm tra storeId hợp lệ
+                if (storeId == Guid.Empty)
+                    return BadRequest("StoreId is required");
+
                 // 1. Xác định thời gian
-                var today = DateTime.UtcNow.Date; // Lấy ngày hiện tại (theo giờ server)
+                var today = DateTime.UtcNow.Date; 
                 var sevenDaysAgo = today.AddDays(-6);
 
-                // 2. Tính Doanh thu hôm nay và số đơn hàng hôm nay
-                // (Chỉ lấy đơn hàng đã hoàn thành hoặc thành công, tùy logic của bạn)
-                var todayOrdersQuery = _context.Orders.Where(o => o.OrderDate.Date == today);
+                // 2. Tính Doanh thu hôm nay và số đơn hàng hôm nay (Của Store đó)
+                var todayOrdersQuery = _context.Orders
+                    .Where(o => o.StoreId == storeId && o.OrderDate.Date == today);
+                
                 var todayRevenue = await todayOrdersQuery.SumAsync(o => o.TotalAmount);
                 var todayOrdersCount = await todayOrdersQuery.CountAsync();
 
-                // 3. Tính Tổng nợ khách hàng
-                // Lấy tổng cột CurrentDebt trong bảng Customers
+                // 3. Tính Tổng nợ khách hàng (Của Store đó)
                 var totalDebt = await _context.Customers
+                    .Where(c => c.StoreId == storeId)
                     .SumAsync(c => c.CurrentDebt);
 
-                // 4. Chuẩn bị dữ liệu biểu đồ 7 ngày
+                // 4. Chuẩn bị dữ liệu biểu đồ 7 ngày (Của Store đó)
                 var weeklyDataRaw = await _context.Orders
-                    .Where(o => o.OrderDate.Date >= sevenDaysAgo && o.OrderDate.Date <= today)
+                    .Where(o => o.StoreId == storeId && o.OrderDate.Date >= sevenDaysAgo && o.OrderDate.Date <= today)
                     .GroupBy(o => o.OrderDate.Date)
                     .Select(g => new
                     {
@@ -46,7 +52,7 @@ namespace BizFlow.OrderAPI.Controllers
                     })
                     .ToListAsync();
 
-                // Chuẩn hóa dữ liệu (Điền số 0 cho những ngày không bán được gì)
+                // Chuẩn hóa dữ liệu (Điền số 0 cho ngày trống)
                 var weeklyChartData = Enumerable.Range(0, 7)
                     .Select(offset =>
                     {
@@ -54,21 +60,23 @@ namespace BizFlow.OrderAPI.Controllers
                         var record = weeklyDataRaw.FirstOrDefault(x => x.Date == date);
                         return new
                         {
-                            DayName = GetVietnameseDayName(date.DayOfWeek), // Hàm chuyển T2, T3...
+                            DayName = GetVietnameseDayName(date.DayOfWeek),
                             Amount = record?.Revenue ?? 0
                         };
                     })
                     .ToList();
 
-                // 5. Top 5 sản phẩm bán chạy nhất tháng
+                // 5. Top 5 sản phẩm bán chạy nhất tháng (Của Store đó)
                 var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
                 var topProducts = await _context.OrderItems
                     .Include(oi => oi.Order)
-                    .Where(oi => oi.Order.OrderDate >= firstDayOfMonth)
+                    .Where(oi => oi.Order.StoreId == storeId && oi.Order.OrderDate >= firstDayOfMonth)
                     .GroupBy(oi => oi.ProductId)
                     .Select(g => new
                     {
                         ProductId = g.Key,
+                        // Tạm thời lấy tên sản phẩm qua API Product hoặc lưu cache, 
+                        // ở đây trả về ID trước hoặc join nếu có bảng Product trong OrderDb
                         TotalQuantity = g.Sum(oi => oi.Quantity),
                         TotalRevenue = g.Sum(oi => oi.Total)
                     })
@@ -91,7 +99,6 @@ namespace BizFlow.OrderAPI.Controllers
             }
         }
 
-        // Hàm phụ để đổi tên thứ sang tiếng Việt cho thân thiện
         private static string GetVietnameseDayName(DayOfWeek day)
         {
             return day switch

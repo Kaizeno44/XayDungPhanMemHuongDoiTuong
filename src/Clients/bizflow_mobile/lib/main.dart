@@ -1,29 +1,30 @@
-import 'package:bizflow_mobile/core/router/app_router.dart';
-import 'package:bizflow_mobile/repositories/product_repository.dart';
-// Lưu ý: Kiểm tra đúng đường dẫn file này trong máy bạn (lib/services/ hay lib/core/services/)
-import 'package:bizflow_mobile/services/signalr_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // Provider cũ
 // ignore: depend_on_referenced_packages
-import 'package:flutter_riverpod/flutter_riverpod.dart'
-    as riverpod; // Riverpod (dùng alias để tránh trùng tên)
+import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod; // Riverpod
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
+// [MỚI] Import để hỗ trợ định dạng ngày tháng tiếng Việt
+import 'package:intl/date_symbol_data_local.dart';
 
 // --- SERVICE & CORE IMPORTS ---
+import 'package:bizflow_mobile/core/router/app_router.dart';
+import 'package:bizflow_mobile/repositories/product_repository.dart';
+import 'package:bizflow_mobile/services/signalr_service.dart';
 import 'core/service_locator.dart';
 import 'core/api_service.dart';
 import 'services/fcm_service.dart';
 
 // --- PROVIDER IMPORTS ---
 import 'providers/auth_provider.dart';
-// ❌ ĐÃ XÓA: import 'cart_provider.dart'; (Vì đã chuyển sang CartController Riverpod)
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. Khởi tạo Firebase
   try {
+    // Nếu bạn có file firebase_options.dart thì dùng:
+    // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await Firebase.initializeApp();
     debugPrint("✅ Firebase đã khởi tạo thành công");
   } catch (e) {
@@ -33,12 +34,16 @@ Future<void> main() async {
   // 2. Khởi tạo ServiceLocator (Cho các Service cũ)
   ServiceLocator.setup();
 
-  // 3. Khởi tạo Hive
+  // 3. Khởi tạo Hive (Database cục bộ)
   await Hive.initFlutter();
   await Hive.openBox('productCache');
   await Hive.openBox('authBox');
 
-  // 4. Khởi tạo FCM
+  // [QUAN TRỌNG] 4. Khởi tạo dữ liệu Locale cho Intl (Tiếng Việt)
+  // Giúp sửa lỗi LocaleDataException khi dùng DateFormat('...', 'vi')
+  await initializeDateFormatting('vi', null);
+
+  // 5. Khởi tạo FCM (Push Notification)
   try {
     FCMService().initialize();
   } catch (e) {
@@ -51,7 +56,7 @@ Future<void> main() async {
   );
 }
 
-// AppConfig: Cung cấp các Provider cũ (Legacy) cho các màn hình chưa chuyển đổi
+// AppConfig: Cung cấp các Provider cũ (Legacy) cho các màn hình chưa chuyển đổi hoàn toàn
 class AppConfig extends StatelessWidget {
   const AppConfig({super.key});
 
@@ -69,9 +74,6 @@ class AppConfig extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AuthProvider(ServiceLocator.apiService),
         ),
-
-        // ❌ ĐÃ XÓA: CartProvider
-        // Chúng ta không cung cấp CartProvider cũ nữa để ép buộc UI dùng CartController mới
       ],
       child: const MyApp(),
     );
@@ -83,7 +85,7 @@ class MyApp extends riverpod.ConsumerWidget {
 
   @override
   Widget build(BuildContext context, riverpod.WidgetRef ref) {
-    // 1. Lấy cấu hình Router
+    // 1. Lấy cấu hình Router từ Riverpod
     final goRouter = ref.watch(appRouterProvider);
 
     // 2. [QUAN TRỌNG] Logic quản lý SignalR tự động theo Auth
@@ -115,11 +117,13 @@ class MyApp extends riverpod.ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.blue,
+        // Font chữ tiếng Việt hiển thị tốt hơn
+        fontFamily: 'Roboto',
         appBarTheme: const AppBarTheme(
           elevation: 0,
           centerTitle: true,
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
+          backgroundColor: Colors.blue, // Đổi màu mặc định cho đẹp
+          foregroundColor: Colors.white,
         ),
       ),
       routerConfig: goRouter,

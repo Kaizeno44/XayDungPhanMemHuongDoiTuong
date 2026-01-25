@@ -6,6 +6,8 @@ using Identity.API.Models;      // 👈 Để dùng CreateUserRequest (DTO)
 using System.Linq;
 using System.Threading.Tasks;
 using System; // Thêm System để dùng DateTime, Guid
+using Microsoft.AspNetCore.Identity; // 👈 QUAN TRỌNG: Thêm thư viện này
+using System.Security.Claims; // 👈 BỔ SUNG DÒNG QUAN TRỌNG NÀY
 
 namespace Identity.API.Controllers
 {
@@ -14,12 +16,16 @@ namespace Identity.API.Controllers
     public class UsersController : ControllerBase
     {
         private readonly AppDbContext _context;
-
-        public UsersController(AppDbContext context)
+// 👇 Khai báo thêm UserManager và RoleManager
+        private readonly UserManager<User> _userManager;
+        private readonly RoleManager<Role> _roleManager;
+        // 👇 Inject vào Constructor
+        public UsersController(AppDbContext context, UserManager<User> userManager, RoleManager<Role> roleManager)
         {
             _context = context;
+            _userManager = userManager;
+            _roleManager = roleManager;
         }
-
         // 1. GET: /api/users - Lấy danh sách nhân viên
         [HttpGet]
         public async Task<IActionResult> GetUsers()
@@ -37,7 +43,7 @@ namespace Identity.API.Controllers
                     id = u.Id.ToString(), // Chuyển Guid sang string cho an toàn          
                     email = u.Email,
                     fullName = u.FullName,
-                    
+                    storeId = u.StoreId, // Thêm cái này để debug xem nhân viên thuộc tiệm nào
                     // Logic: Lấy tên Role đầu tiên nếu có
                     role = u.UserRoles != null && u.UserRoles.Any() 
                            ? u.UserRoles.First().Role?.Name ?? "N/A" 
@@ -54,61 +60,71 @@ namespace Identity.API.Controllers
         }
 
         // 2. POST: /api/users - Tạo nhân viên mới
+        // 2. POST: /api/users - Tạo nhân viên mới (ĐÃ SỬA LẠI CHUẨN)
+        // 2. POST: /api/users - Tạo nhân viên mới (ĐÃ CÓ LOGIC CHẶN GÓI CƯỚC)
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
         {
             // 1. Check trùng Email
-            if (await _context.Users.AnyAsync(u => u.Email == request.Email))
+            var existUser = await _userManager.FindByEmailAsync(request.Email);
+            if (existUser != null) return BadRequest(new { message = "Email này đã được sử dụng!" });
+
+            // 2. Check Role
+            if (!await _roleManager.RoleExistsAsync("Employee"))
+                return StatusCode(500, "Lỗi hệ thống: Role 'Employee' chưa được tạo.");
+
+            // 3. Lấy thông tin Ông chủ & Cửa hàng
+            var ownerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var owner = await _userManager.FindByIdAsync(ownerId);
+            
+            if (owner == null) return Unauthorized("Không tìm thấy thông tin người tạo.");
+
+            // 👇👇👇 LOGIC KIỂM TRA GIỚI HẠN GÓI CƯỚC (START-UP vs PRO) 👇👇👇
+            var store = await _context.Stores
+                .Include(s => s.SubscriptionPlan)
+                .FirstOrDefaultAsync(s => s.Id == owner.StoreId);
+
+            if (store != null && store.SubscriptionPlan != null)
             {
-                return BadRequest(new { message = "Email này đã được sử dụng!" });
-            }
-
-            // 2. MẶC ĐỊNH LÀ EMPLOYEE 
-            var roleName = "Employee"; 
-
-            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
-            if (role == null)
-            {
-                return StatusCode(500, "Lỗi hệ thống: Chưa cấu hình Role 'Employee' trong Database.");
-            }
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                // 3. Tạo User
-                var user = new User
-                {
-                    Id = Guid.NewGuid(),
-                    Email = request.Email,
-                    FullName = request.FullName,
-                    PasswordHash = request.Password, // Lưu ý: Nên hash password thực tế
-                    IsActive = true,
-                    IsOwner = false,
-                    StoreId = null // TODO: Sau này lấy StoreId từ Token của người tạo (Owner)
-                };
-
-                _context.Users.Add(user);
-                await _context.SaveChangesAsync();
-
-                // 4. Gán Role Employee
-                _context.UserRoles.Add(new UserRole 
-                { 
-                    UserId = user.Id, 
-                    RoleId = role.Id 
-                });
+                int maxEmployees = store.SubscriptionPlan.MaxEmployees;
                 
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                // Nếu > 0 thì mới kiểm tra (0 là không giới hạn)
+                if (maxEmployees > 0)
+                {
+                    int currentCount = await _context.Users.CountAsync(u => u.StoreId == owner.StoreId);
+                    if (currentCount >= maxEmployees)
+                    {
+                        return BadRequest(new { 
+                            message = $"Gói '{store.SubscriptionPlan.Name}' chỉ cho phép tối đa {maxEmployees} nhân viên. Vui lòng nâng cấp gói cước!" 
+                        });
+                    }
+                }
+            }
+            // 👆👆👆 KẾT THÚC LOGIC KIỂM TRA 👆👆👆
 
+            // 4. Tạo User
+            var user = new User
+            {
+                UserName = request.Email,
+                Email = request.Email,
+                FullName = request.FullName,
+                IsActive = true,
+                IsOwner = false,
+                StoreId = owner.StoreId // Gán nhân viên vào đúng cửa hàng của ông chủ
+            };
+
+            var result = await _userManager.CreateAsync(user, request.Password);
+
+            if (result.Succeeded)
+            {
+                await _userManager.AddToRoleAsync(user, "Employee");
                 return Ok(new { message = "Tạo nhân viên bán hàng thành công!" });
             }
-            catch (Exception ex)
+            else
             {
-                await transaction.RollbackAsync();
-                return StatusCode(500, "Lỗi: " + ex.Message);
+                return BadRequest(new { message = "Tạo thất bại", errors = result.Errors });
             }
         }
-
         // ==========================================
         // 👇 3. NEW API: LƯU DEVICE TOKEN CHO FCM 👇
         // ==========================================

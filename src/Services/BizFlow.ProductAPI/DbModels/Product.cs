@@ -8,6 +8,7 @@ namespace BizFlow.ProductAPI.DbModels
     {
         [Key]
         public int Id { get; set; }
+        public Guid StoreId { get; set; }
         public int CategoryId { get; set; }
         [ForeignKey("CategoryId")]
         public Category Category { get; set; }

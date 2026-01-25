@@ -3,18 +3,17 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import Cookies from "js-cookie";
 import Link from "next/link";
-import { Search, Lock, Unlock, Plus } from "lucide-react";
+// 👇 1. Nhớ import thêm icon Trash2 (Thùng rác)
+import { Search, Lock, Unlock, Plus, Trash2 } from "lucide-react";
 
 export default function OwnerManagementPage() {
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 1. Load dữ liệu từ API
   const fetchOwners = async () => {
     try {
       const token = Cookies.get("accessToken");
-      // Gọi đúng API AdminController bạn vừa thêm
       const res = await axios.get("http://localhost:5000/api/admin/users?role=Owner", {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -30,20 +29,51 @@ export default function OwnerManagementPage() {
     fetchOwners();
   }, []);
 
-  // 2. Xử lý Khóa/Mở khóa
   const toggleStatus = async (id, currentStatus) => {
     if(!confirm("Bạn có chắc muốn thay đổi trạng thái tài khoản này?")) return;
+    
+    // 1. Tính toán trạng thái mới (Nếu đang Active thì thành Locked và ngược lại)
+    const newStatus = currentStatus === 'Active' ? 'Locked' : 'Active';
+
     try {
         const token = Cookies.get("accessToken");
-        // Gọi API PUT Status mới
+        
+        // 2. Gọi API báo cho Server biết
         await axios.put(`http://localhost:5000/api/admin/users/${id}/status`, {}, {
             headers: { Authorization: `Bearer ${token}` }
         });
-        // Load lại danh sách cho chuẩn
-        fetchOwners();
-        alert("Cập nhật thành công!");
+
+        // 3. QUAN TRỌNG: Tự cập nhật lại danh sách trên màn hình (Không cần gọi fetchOwners)
+        setOwners(prevOwners => prevOwners.map(owner => 
+            owner.id === id ? { ...owner, status: newStatus } : owner
+        ));
+
+        // (Tùy chọn) Bỏ alert đi cho đỡ phải bấm OK, trải nghiệm mượt hơn
+        // alert("Cập nhật thành công!"); 
+
     } catch (error) {
+        // Nếu API lỗi thì mới hiện thông báo và load lại dữ liệu cũ
         alert("Lỗi cập nhật trạng thái");
+        fetchOwners(); 
+    }
+  };
+
+  // 👇 2. Hàm xử lý Xóa
+  const handleDelete = async (id) => {
+    if(!confirm("⚠️ CẢNH BÁO: Hành động này không thể hoàn tác!\nBạn có chắc chắn muốn XÓA VĨNH VIỄN chủ hộ này không?")) return;
+    
+    try {
+        const token = Cookies.get("accessToken");
+        // Gọi API xóa bên Backend
+        await axios.delete(`http://localhost:5000/api/admin/users/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        alert("Đã xóa thành công!");
+        fetchOwners(); // Load lại danh sách sau khi xóa
+    } catch (error) {
+        console.error(error);
+        alert("Lỗi khi xóa: " + (error.response?.data?.message || error.message));
     }
   };
 
@@ -78,21 +108,29 @@ export default function OwnerManagementPage() {
             <th className="p-4 rounded-tl-lg">Họ tên</th>
             <th className="p-4">Email</th>
             <th className="p-4">Cửa hàng</th>
+            <th className="p-4">Gói dịch vụ</th>
             <th className="p-4 text-center">Trạng thái</th>
             <th className="p-4 text-center rounded-tr-lg">Hành động</th>
           </tr>
         </thead>
         <tbody>
           {loading ? (
-             <tr><td colSpan="5" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
+             <tr><td colSpan="6" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
           ) : filteredOwners.length === 0 ? (
-             <tr><td colSpan="5" className="p-8 text-center text-gray-500">Chưa có dữ liệu</td></tr>
+             <tr><td colSpan="6" className="p-8 text-center text-gray-500">Chưa có dữ liệu</td></tr>
           ) : (
             filteredOwners.map((owner) => (
               <tr key={owner.id} className="border-b hover:bg-gray-50 transition">
                 <td className="p-4 font-medium">{owner.fullName}</td>
                 <td className="p-4 text-gray-500">{owner.email}</td>
                 <td className="p-4 text-blue-600 font-semibold">{owner.storeName}</td>
+                
+                <td className="p-4">
+                    <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold">
+                        {owner.planName || "Chưa đăng ký"}
+                    </span>
+                </td>
+
                 <td className="p-4 text-center">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                     owner.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -100,14 +138,27 @@ export default function OwnerManagementPage() {
                     {owner.status === 'Active' ? 'Hoạt động' : 'Đã khóa'}
                   </span>
                 </td>
+
+                {/* 👇 3. Cột Hành động (Gồm nút Khóa và Xóa) */}
                 <td className="p-4 text-center">
-                  <button 
-                    onClick={() => toggleStatus(owner.id, owner.status)}
-                    className={`p-2 rounded-full hover:bg-gray-200 transition ${owner.status === 'Active' ? 'text-red-500' : 'text-green-500'}`}
-                    title="Đổi trạng thái"
-                  >
-                    {owner.status === 'Active' ? <Lock size={18} /> : <Unlock size={18} />}
-                  </button>
+                  <div className="flex justify-center gap-2"> 
+                      <button 
+                        onClick={() => toggleStatus(owner.id, owner.status)}
+                        className={`p-2 rounded-full hover:bg-gray-200 transition ${owner.status === 'Active' ? 'text-orange-500' : 'text-green-500'}`}
+                        title={owner.status === 'Active' ? "Khóa tài khoản" : "Mở khóa"}
+                      >
+                        {owner.status === 'Active' ? <Lock size={18} /> : <Unlock size={18} />}
+                      </button>
+
+                      {/* Nút Xóa Mới */}
+                      <button 
+                        onClick={() => handleDelete(owner.id)}
+                        className="p-2 rounded-full hover:bg-red-100 text-red-500 transition"
+                        title="Xóa vĩnh viễn"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                  </div>
                 </td>
               </tr>
             ))

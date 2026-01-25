@@ -63,7 +63,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.WithOrigins("http://localhost:3000") // Địa chỉ Frontend NextJS
+        policy.SetIsOriginAllowed(origin => true)// Địa chỉ Frontend NextJS
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();

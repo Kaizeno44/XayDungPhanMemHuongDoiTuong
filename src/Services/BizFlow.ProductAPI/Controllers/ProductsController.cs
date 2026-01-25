@@ -6,7 +6,7 @@ using BizFlow.ProductAPI.DTOs;
 using BizFlow.ProductAPI.Hubs; // Thêm using cho ProductHub
 using Microsoft.AspNetCore.SignalR; // Thêm using cho SignalR
 // using Microsoft.AspNetCore.Authorization; // Mở lại khi có Auth
-
+using System.Security.Claims; // 👈 THÊM DÒNG NÀY
 namespace BizFlow.ProductAPI.Controllers
 {
     [Route("api/[controller]")]
@@ -34,11 +34,25 @@ namespace BizFlow.ProductAPI.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10)
         {
+            var storeIdClaim = User.FindFirst("store_id")?.Value;
+            Guid? storeGuid = null;
+            if (!string.IsNullOrEmpty(storeIdClaim) && Guid.TryParse(storeIdClaim, out var parsedGuid))
+            {
+                storeGuid = parsedGuid;
+            }
+
+
             var query = _context.Products
                 .Include(p => p.Category)
                 .Include(p => p.Inventory)
                 .Include(p => p.ProductUnits)
                 .AsQueryable();
+
+            if (storeGuid != null)
+            {
+                query = query.Where(p => p.StoreId == storeGuid);
+            }
+
 
             if (!string.IsNullOrEmpty(keyword))
                 query = query.Where(p => p.Name.Contains(keyword) || p.Sku.Contains(keyword));
@@ -159,7 +173,18 @@ namespace BizFlow.ProductAPI.Controllers
         [HttpPost]
         // [Authorize(Roles = "Admin")] // Mở lại dòng này nếu đã cấu hình Auth
         public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
-        {
+        {   
+            //[MỚI] LẤY STORE ID TỪ TOKEN 👇👇👇
+            var storeIdClaim = User.FindFirst("store_id")?.Value;
+            if (string.IsNullOrEmpty(storeIdClaim)) 
+            {
+                 // Tùy bạn: Có thể return Unauthorized hoặc gán mặc định để test
+                 return Unauthorized(new { message = "Không xác định được cửa hàng (Thiếu Token)" });
+            }
+            var storeGuid = Guid.Parse(storeIdClaim);
+            // 👆👆👆 [MỚI] KẾT THÚC ĐOẠN LẤY ID 👆👆👆
+
+
             // 1. Kiểm tra trùng SKU
             if (await _context.Products.AnyAsync(p => p.Sku == request.Sku))
                 return BadRequest(new { message = "Mã SKU đã tồn tại!" });
@@ -170,6 +195,7 @@ namespace BizFlow.ProductAPI.Controllers
                 // 2. Lưu thông tin chính (Product)
                 var product = new Product
                 {
+                    StoreId = storeGuid,
                     Name = request.Name,
                     Sku = request.Sku,
                     CategoryId = request.CategoryId,

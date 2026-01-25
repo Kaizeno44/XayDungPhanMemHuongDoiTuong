@@ -13,6 +13,10 @@ namespace Identity.Domain.Entities
         public SubscriptionPlan? SubscriptionPlan { get; set; }
         public DateTime SubscriptionExpiryDate { get; set; } // Ngày hết hạn
 
+
+        // 👇 BỔ SUNG 2 DÒNG NÀY ĐỂ HẾT LỖI
+        public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         // Danh sách nhân viên + Ông chủ
         public ICollection<User> Users { get; set; }
     }

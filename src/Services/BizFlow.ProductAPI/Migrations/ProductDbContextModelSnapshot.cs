@@ -149,47 +149,6 @@ namespace BizFlow.ProductAPI.Migrations
                     b.ToTable("ProductUnits");
                 });
 
-            modelBuilder.Entity("BizFlow.ProductAPI.DbModels.StockImport", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<double>("CostPrice")
-                        .HasColumnType("double");
-
-                    b.Property<DateTime>("ImportDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Note")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<double>("Quantity")
-                        .HasColumnType("double");
-
-                    b.Property<Guid>("StoreId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("SupplierName")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("UnitId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProductId");
-
-                    b.HasIndex("UnitId");
-
-                    b.ToTable("StockImports");
-                });
-
             modelBuilder.Entity("BizFlow.ProductAPI.DbModels.Inventory", b =>
                 {
                     b.HasOne("BizFlow.ProductAPI.DbModels.Product", "Product")
@@ -221,25 +180,6 @@ namespace BizFlow.ProductAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
-                });
-
-            modelBuilder.Entity("BizFlow.ProductAPI.DbModels.StockImport", b =>
-                {
-                    b.HasOne("BizFlow.ProductAPI.DbModels.Product", "Product")
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("BizFlow.ProductAPI.DbModels.ProductUnit", "Unit")
-                        .WithMany()
-                        .HasForeignKey("UnitId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-
-                    b.Navigation("Unit");
                 });
 
             modelBuilder.Entity("BizFlow.ProductAPI.DbModels.Product", b =>

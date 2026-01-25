@@ -204,23 +204,51 @@ namespace BizFlow.OrderAPI.Controllers
             }
         }
 
-        // [PUT] Cập nhật trạng thái đơn hàng (Xác nhận đơn)
+        // [New] Lấy chi tiết đơn hàng (Xử lý lỗi 404 và Vòng lặp JSON)
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetOrderById(Guid id)
+        {
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                .Where(o => o.Id == id)
+                .Select(o => new
+                {
+                    o.Id,
+                    o.OrderCode,
+                    o.OrderDate,
+                    o.TotalAmount,
+                    o.Status,
+                    o.PaymentMethod,
+                    o.CustomerId,
+                    o.StoreId,
+                    OrderItems = o.OrderItems.Select(oi => new
+                    {
+                        oi.Id,
+                        oi.ProductId,
+                        oi.UnitId,
+                        oi.Quantity,
+                        oi.UnitPrice,
+                        oi.Total
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (order == null) return NotFound(new { message = "Không tìm thấy đơn hàng" });
+
+            return Ok(order);
+        }
+
+        // [New] Cập nhật trạng thái đơn hàng (Xác nhận đơn hàng)
         [HttpPut("{id}/status")]
-        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromQuery] string status)
+        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] string status)
         {
             var order = await _context.Orders.FindAsync(id);
-            if (order == null) return NotFound("Không tìm thấy đơn hàng.");
+            if (order == null) return NotFound(new { message = "Không tìm thấy đơn hàng" });
 
-            try
-            {
-                order.Status = status;
-                await _context.SaveChangesAsync();
-                return Ok(new { Message = $"Đã cập nhật trạng thái đơn hàng sang {status}" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Lỗi cập nhật trạng thái: {ex.Message}");
-            }
+            order.Status = status;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Cập nhật trạng thái thành công", status = order.Status });
         }
     }
 }

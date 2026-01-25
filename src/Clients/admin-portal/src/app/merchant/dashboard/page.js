@@ -43,7 +43,7 @@ export default function MerchantDashboard() {
 
     try {
       // --- GỌI SONG SONG CÁC API ---
-      const [productRes, dashboardStatsRes, lowStockRes] = await Promise.allSettled([
+      const [productRes, dashboardStatsRes, lowStockRes, ordersRes] = await Promise.allSettled([
         // 1. API Sản phẩm (Tổng số lượng)
         axios.get("http://localhost:5000/api/products/count", {
            headers: { Authorization: `Bearer ${token}` }
@@ -55,6 +55,10 @@ export default function MerchantDashboard() {
         // 3. API Low Stock (Cảnh báo tồn kho)
         axios.get("http://localhost:5000/api/Products/low-stock", {
            headers: { Authorization: `Bearer ${token}` }
+        }),
+        // 4. API Lấy toàn bộ đơn hàng để tính toán doanh thu tháng
+        axios.get("http://localhost:5000/api/orders", {
+           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
 
@@ -65,13 +69,6 @@ export default function MerchantDashboard() {
         const data = dashboardStatsRes.value.data;
         console.log("Dashboard Stats Data:", data);
         
-        // Chuẩn hóa dữ liệu biểu đồ
-        const rawRevenue = data.weeklyRevenue || data.WeeklyRevenue || [];
-        const normalizedRevenue = rawRevenue.map(item => ({
-          dayName: item.dayName || item.DayName,
-          amount: Number(item.amount || item.Amount || 0)
-        }));
-
         // Chuẩn hóa Top Products và lấy tên thật từ ProductAPI
         const rawTopProducts = data.topProducts || data.TopProducts || [];
         const normalizedTopProducts = await Promise.all(rawTopProducts.map(async (p) => {
@@ -91,18 +88,57 @@ export default function MerchantDashboard() {
           return {
             productId: pid,
             productName: name,
-            totalSold: p.totalSold || p.TotalSold || 0,
+            totalSold: p.totalQuantity || p.TotalQuantity || p.totalSold || p.TotalSold || 0,
             totalRevenue: p.totalRevenue || p.TotalRevenue || 0
           };
         }));
 
-        setRevenueData(normalizedRevenue);
         setTopProducts(normalizedTopProducts);
         setSummaryStats(prev => ({
           ...prev,
-          orders: data.todayOrdersCount || data.TodayOrdersCount || 0,
-          todayRevenue: data.todayRevenue || data.TodayRevenue || 0,
           debt: data.totalDebt || data.TotalDebt || 0
+        }));
+      }
+
+      // 1.1 Xử lý Doanh thu tháng và Biểu đồ từ danh sách đơn hàng
+      if (ordersRes.status === 'fulfilled') {
+        const allOrders = ordersRes.value.data || [];
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        // Lọc đơn hàng "Confirmed" trong tháng hiện tại
+        const monthlyOrders = allOrders.filter(o => {
+          const orderDate = new Date(o.orderDate || o.OrderDate);
+          return (o.status === "Confirmed" || o.Status === "Confirmed") &&
+                 orderDate.getMonth() === currentMonth &&
+                 orderDate.getFullYear() === currentYear;
+        });
+
+        const totalMonthlyRevenue = monthlyOrders.reduce((sum, o) => sum + (o.totalAmount || o.TotalAmount || 0), 0);
+        
+        // Gom nhóm doanh thu theo ngày để vẽ biểu đồ
+        const revenueByDay = {};
+        monthlyOrders.forEach(o => {
+          const date = new Date(o.orderDate || o.OrderDate);
+          const day = date.getDate();
+          revenueByDay[day] = (revenueByDay[day] || 0) + (o.totalAmount || o.TotalAmount || 0);
+        });
+
+        // Tạo dữ liệu cho biểu đồ (tất cả các ngày trong tháng đến hiện tại)
+        const chartData = [];
+        for (let i = 1; i <= now.getDate(); i++) {
+          chartData.push({
+            dayName: `Ngày ${i}`,
+            amount: revenueByDay[i] || 0
+          });
+        }
+
+        setRevenueData(chartData);
+        setSummaryStats(prev => ({
+          ...prev,
+          orders: monthlyOrders.length,
+          todayRevenue: totalMonthlyRevenue
         }));
       }
 

@@ -1,18 +1,15 @@
 import 'package:flutter/material.dart';
-// Để dùng TextInputFormatter
 import 'package:intl/intl.dart';
 import 'order_service.dart';
 
 class PayDebtScreen extends StatefulWidget {
   final String customerId;
-  final String customerName; // Mới thêm: Để hiển thị tên khách
   final String storeId;
   final double currentDebt;
 
   const PayDebtScreen({
     super.key,
     required this.customerId,
-    required this.customerName, // Required
     required this.storeId,
     required this.currentDebt,
   });
@@ -49,7 +46,6 @@ class _PayDebtScreenState extends State<PayDebtScreen> {
   @override
   void dispose() {
     _amountController.dispose();
-    _noteController.dispose();
     super.dispose();
   }
 
@@ -126,13 +122,12 @@ class _PayDebtScreenState extends State<PayDebtScreen> {
     if (confirm != true) return;
 
     setState(() => _isLoading = true);
+
     try {
-      // Giả sử API PayDebt hỗ trợ thêm param note
       final result = await _orderService.payDebt(
         customerId: widget.customerId,
         amount: amount,
         storeId: widget.storeId,
-        // note: _noteController.text // Nếu API có hỗ trợ note
       );
 
       if (mounted) {
@@ -150,7 +145,7 @@ class _PayDebtScreenState extends State<PayDebtScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
         behavior: SnackBarBehavior.floating,
       ),
     );

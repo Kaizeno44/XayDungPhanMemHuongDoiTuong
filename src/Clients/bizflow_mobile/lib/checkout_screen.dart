@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -22,7 +23,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   List<Customer> customers = [];
   String? selectedCustomerId;
   String selectedPaymentMethod = "Cash";
-
   bool isLoadingOrder = false;
   bool isLoadingCustomers = true;
 
@@ -53,13 +53,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               isLoadingCustomers = false;
             });
           }
+        } else {
+          if (mounted) setState(() => isLoadingCustomers = false);
         }
       } else {
         if (mounted) setState(() => isLoadingCustomers = false);
       }
     } catch (e) {
       if (mounted) setState(() => isLoadingCustomers = false);
-      debugPrint("Error fetching customers: $e");
     }
   }
 
@@ -93,7 +94,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
 
     final url = Uri.parse(ApiConfig.orders);
-
     final requestBody = {
       "customerId": selectedCustomerId,
       "storeId": widget.storeId,
@@ -113,19 +113,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _showSuccessDialog(itemsSnapshot, totalSnapshot, customerObj.name);
         }
       } else {
-        String errorMsg = "Tạo đơn thất bại";
+        String errorMsg = response.body;
         try {
           final errJson = jsonDecode(response.body);
           if (errJson['errors'] != null) {
             errorMsg = errJson['errors'].toString();
-          } else if (errJson['message'] != null) {
-            errorMsg = errJson['message'];
-          } else if (errJson['title'] != null) {
-            errorMsg = errJson['title'];
+          } else {
+            errorMsg = errJson['message'] ?? errJson['title'] ?? response.body;
           }
-        } catch (_) {
-          errorMsg = response.body;
-        }
+        } catch (_) {}
         if (mounted) _showSnackBar("Lỗi: $errorMsg", isError: true);
       }
     } catch (e) {
@@ -139,8 +135,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
-        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
   }
@@ -154,13 +149,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: Column(
           children: const [
-            Icon(Icons.check_circle, color: Colors.green, size: 60),
-            SizedBox(height: 12),
+            Icon(Icons.check_circle, color: Colors.green, size: 50),
+            SizedBox(height: 10),
             Text(
-              "Đặt hàng thành công!",
+              "Thành công",
               style: TextStyle(
                 color: Colors.green,
                 fontWeight: FontWeight.bold,
@@ -169,7 +164,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ],
         ),
         content: const Text(
-          "Đơn hàng đã được lưu vào hệ thống.\nBạn có muốn in hóa đơn ngay không?",
+          "Đơn hàng đã tạo!\nBạn có muốn in hoặc chia sẻ hóa đơn không?",
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.spaceEvenly,
@@ -183,11 +178,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[700],
+              backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
             ),
             icon: const Icon(Icons.print, size: 18),
-            label: const Text("In Hóa Đơn"),
+            label: const Text("In / Share"),
             onPressed: () {
               Navigator.of(ctx).pop();
               Navigator.push(
@@ -220,11 +215,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
+      body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // --- 1. CHỌN KHÁCH HÀNG ---
+            // --- KHU VỰC CHỌN KHÁCH HÀNG ---
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -232,19 +227,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   child: isLoadingCustomers
                       ? const Center(
                           child: Padding(
-                            padding: EdgeInsets.all(12),
+                            padding: EdgeInsets.all(15),
                             child: CircularProgressIndicator(),
                           ),
                         )
                       : DropdownButtonFormField<String>(
-                          decoration: InputDecoration(
-                            labelText: "Khách hàng",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            prefixIcon: const Icon(Icons.person),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
+                          decoration: const InputDecoration(
+                            labelText: "Chọn khách hàng",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 10,
                               vertical: 16,
                             ),
                           ),
@@ -262,13 +255,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (val) {
-                            setState(() => selectedCustomerId = val);
-                          },
+                          onChanged: (val) =>
+                              setState(() => selectedCustomerId = val),
                         ),
                 ),
                 const SizedBox(width: 8),
-
                 // NÚT THÊM NHANH KHÁCH HÀNG
                 Container(
                   width: 55,
@@ -293,122 +284,55 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           customers.add(newCustomer);
                           selectedCustomerId = newCustomer.id;
                         });
-                        _showSnackBar("Đã thêm khách hàng mới!");
                       }
                     },
-                    child: const Icon(Icons.person_add),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 10),
-
-            // Nút xem lịch sử (Chỉ hiện khi đã chọn khách)
-            if (selectedCustomerId != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.history, color: Colors.blue),
-                  label: const Text("Xem lịch sử & Công nợ"),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.blue.shade50,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            OrderHistoryScreen(customerId: selectedCustomerId!),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
+            // ĐÃ XÓA NÚT "XEM LỊCH SỬ & CÔNG NỢ" Ở ĐÂY
             const SizedBox(height: 20),
             const Divider(),
-            const SizedBox(height: 16),
 
-            // --- 2. PHƯƠNG THỨC THANH TOÁN ---
+            // Chọn phương thức thanh toán
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                "Phương thức thanh toán",
+                "Phương thức thanh toán:",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
-            const SizedBox(height: 8),
-
-            // Radio Tiền mặt
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: selectedPaymentMethod == "Cash"
-                      ? Colors.green
-                      : Colors.grey.shade300,
-                ),
-                borderRadius: BorderRadius.circular(8),
-                color: selectedPaymentMethod == "Cash"
-                    ? Colors.green.withOpacity(0.05)
-                    : null,
+            RadioListTile(
+              title: const Text("Tiền mặt"),
+              subtitle: const Text("Thanh toán ngay"),
+              value: "Cash",
+              groupValue: selectedPaymentMethod,
+              activeColor: Colors.green,
+              secondary: const Icon(Icons.money, color: Colors.green),
+              onChanged: (val) =>
+                  setState(() => selectedPaymentMethod = val.toString()),
+            ),
+            RadioListTile(
+              title: const Text("Ghi nợ"),
+              subtitle: const Text("Thêm vào công nợ"),
+              value: "Debt",
+              groupValue: selectedPaymentMethod,
+              activeColor: Colors.red,
+              secondary: const Icon(
+                Icons.account_balance_wallet,
+                color: Colors.red,
               ),
-              margin: const EdgeInsets.only(bottom: 8),
-              child: RadioListTile(
-                title: const Text(
-                  "Tiền mặt",
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text("Thanh toán ngay khi nhận hàng"),
-                value: "Cash",
-                groupValue: selectedPaymentMethod,
-                activeColor: Colors.green,
-                secondary: const Icon(
-                  Icons.monetization_on,
-                  color: Colors.green,
-                ),
-                onChanged: (val) =>
-                    setState(() => selectedPaymentMethod = val.toString()),
-              ),
+              onChanged: (val) =>
+                  setState(() => selectedPaymentMethod = val.toString()),
             ),
 
-            // Radio Ghi nợ
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: selectedPaymentMethod == "Debt"
-                      ? Colors.red
-                      : Colors.grey.shade300,
-                ),
-                borderRadius: BorderRadius.circular(8),
-                color: selectedPaymentMethod == "Debt"
-                    ? Colors.red.withOpacity(0.05)
-                    : null,
-              ),
-              child: RadioListTile(
-                title: const Text(
-                  "Ghi nợ",
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text("Lưu vào sổ nợ khách hàng"),
-                value: "Debt",
-                groupValue: selectedPaymentMethod,
-                activeColor: Colors.red,
-                secondary: const Icon(
-                  Icons.account_balance_wallet,
-                  color: Colors.red,
-                ),
-                onChanged: (val) =>
-                    setState(() => selectedPaymentMethod = val.toString()),
-              ),
-            ),
+            const Spacer(),
 
-            const SizedBox(height: 40),
-
-            // --- 3. NÚT SUBMIT ---
+            // Nút Xác Nhận
             SizedBox(
               width: double.infinity,
-              height: 54,
+              height: 50,
               child: ElevatedButton(
                 onPressed:
                     (isLoadingOrder ||
@@ -420,32 +344,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  elevation: 2,
                 ),
                 child: isLoadingOrder
                     ? const SizedBox(
                         height: 24,
                         width: 24,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 3,
-                        ),
+                        child: CircularProgressIndicator(color: Colors.white),
                       )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.check_circle_outline),
-                          const SizedBox(width: 8),
-                          Text(
-                            "XÁC NHẬN TẠO ĐƠN ($itemCount SP)",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                    : Text(
+                        "XÁC NHẬN TẠO ĐƠN ($itemCount món)",
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
               ),
             ),

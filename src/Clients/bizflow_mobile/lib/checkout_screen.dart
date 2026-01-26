@@ -8,7 +8,7 @@ import 'package:bizflow_mobile/features/cart/cart_controller.dart';
 import 'package:bizflow_mobile/core/config/api_config.dart';
 import 'package:bizflow_mobile/models.dart';
 import 'package:bizflow_mobile/screens/invoice_preview_screen.dart';
-import 'package:bizflow_mobile/screens/create_customer_dialog.dart'; // Đảm bảo import đúng
+import 'package:bizflow_mobile/screens/create_customer_dialog.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.storeId});
@@ -145,6 +145,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     double total,
     String customerName,
   ) {
+    // [ĐỒNG BỘ MÀU] Lấy colorScheme
+    final colorScheme = Theme.of(context).colorScheme;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -178,7 +181,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
+              // [ĐỒNG BỘ MÀU] Dùng màu Primary (Cam)
+              backgroundColor: colorScheme.primary,
               foregroundColor: Colors.white,
             ),
             icon: const Icon(Icons.print, size: 18),
@@ -209,11 +213,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final cartState = ref.watch(cartControllerProvider);
     final itemCount = cartState.items.length;
 
+    // [ĐỒNG BỘ MÀU] Lấy colorScheme từ Theme
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Thanh toán"),
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
+        // [ĐỒNG BỘ MÀU] Xóa màu cứng, dùng Theme mặc định (Cam)
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -232,13 +238,23 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           ),
                         )
                       : DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: "Chọn khách hàng",
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.person),
-                            contentPadding: EdgeInsets.symmetric(
+                            border: const OutlineInputBorder(),
+                            prefixIcon: Icon(
+                              Icons.person,
+                              color: colorScheme.primary,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 16,
+                            ),
+                            // [ĐỒNG BỘ MÀU] Focus color
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: colorScheme.primary,
+                                width: 2,
+                              ),
                             ),
                           ),
                           isExpanded: true,
@@ -265,12 +281,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   width: 55,
                   height: 55,
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
+                    // [ĐỒNG BỘ MÀU] Dùng màu Primary nhạt thay vì Blue
+                    color: colorScheme.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.blue.shade300),
+                    border: Border.all(
+                      color: colorScheme.primary.withOpacity(0.5),
+                    ),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.person_add, color: Colors.blue),
+                    // [ĐỒNG BỘ MÀU] Icon màu Primary
+                    icon: Icon(Icons.person_add, color: colorScheme.primary),
                     tooltip: "Thêm khách mới",
                     onPressed: () async {
                       final newCustomer = await showDialog<Customer>(
@@ -291,7 +311,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ],
             ),
 
-            // ĐÃ XÓA NÚT "XEM LỊCH SỬ & CÔNG NỢ" Ở ĐÂY
             const SizedBox(height: 20),
             const Divider(),
 
@@ -303,12 +322,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
+            // Giữ màu Xanh lá/Đỏ cho ý nghĩa ngữ nghĩa (Tiền mặt/Nợ)
+            // Nhưng có thể dùng activeColor là Primary nếu muốn đồng bộ hoàn toàn
             RadioListTile(
               title: const Text("Tiền mặt"),
               subtitle: const Text("Thanh toán ngay"),
               value: "Cash",
               groupValue: selectedPaymentMethod,
-              activeColor: Colors.green,
+              activeColor: Colors.green, // Giữ Xanh lá cho Tiền mặt
               secondary: const Icon(Icons.money, color: Colors.green),
               onChanged: (val) =>
                   setState(() => selectedPaymentMethod = val.toString()),
@@ -318,7 +339,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               subtitle: const Text("Thêm vào công nợ"),
               value: "Debt",
               groupValue: selectedPaymentMethod,
-              activeColor: Colors.red,
+              activeColor: Colors.red, // Giữ Đỏ cho Nợ
               secondary: const Icon(
                 Icons.account_balance_wallet,
                 color: Colors.red,
@@ -341,11 +362,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     ? null
                     : createOrder,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
+                  // [ĐỒNG BỘ MÀU] Xóa blueAccent, dùng Primary
+                  backgroundColor: colorScheme.primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  disabledBackgroundColor: Colors.grey.shade300,
                 ),
                 child: isLoadingOrder
                     ? const SizedBox(

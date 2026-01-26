@@ -1,12 +1,13 @@
 using BizFlow.OrderAPI.DbModels;
 using Microsoft.EntityFrameworkCore;
-using MassTransit; // [1] Import MassTransit
+using MassTransit;
 
 namespace BizFlow.OrderAPI.Data
 {
     public class OrderDbContext : DbContext
     {
-        public OrderDbContext(DbContextOptions<OrderDbContext> options) : base(options)
+        public OrderDbContext(DbContextOptions<OrderDbContext> options)
+            : base(options)
         {
         }
 
@@ -19,16 +20,37 @@ namespace BizFlow.OrderAPI.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // [2] QUAN TRỌNG: Thêm 3 dòng này để tạo bảng cho Outbox Pattern
+            // MassTransit Outbox
             modelBuilder.AddInboxStateEntity();
             modelBuilder.AddOutboxMessageEntity();
             modelBuilder.AddOutboxStateEntity();
 
-            // Các cấu hình khác của bạn (nếu có)
+            // Orders - OrderItems
             modelBuilder.Entity<Order>()
                 .HasMany(o => o.OrderItems)
                 .WithOne(i => i.Order)
                 .HasForeignKey(i => i.OrderId);
+
+            // Orders - Customers
+            modelBuilder.Entity<Order>()
+                .HasOne(o => o.Customer)
+                .WithMany(c => c.Orders)
+                .HasForeignKey(o => o.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Customers - DebtLogs
+            modelBuilder.Entity<DebtLog>()
+                .HasOne(d => d.Customer)
+                .WithMany(c => c.DebtLogs)
+                .HasForeignKey(d => d.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // DebtLogs - Orders (optional)
+            modelBuilder.Entity<DebtLog>()
+                .HasOne(d => d.Order)
+                .WithMany()
+                .HasForeignKey(d => d.RefOrderId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

@@ -5,20 +5,23 @@ namespace BizFlow.OrderAPI.DbModels
 {
     [Table("DebtLogs")]
     public class DebtLog
-    {
-        [Key]
-        public Guid Id { get; set; } = Guid.NewGuid();
+{
+    [Key]
+    public Guid Id { get; set; } = Guid.NewGuid();
 
-        public Guid CustomerId { get; set; }
-        public Guid StoreId { get; set; }      // ✅ BỔ SUNG
-        public Guid? RefOrderId { get; set; }
+    public Guid CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!; // ✅ ADD
 
-        public decimal Amount { get; set; }
+    public Guid StoreId { get; set; }
 
-        public string Action { get; set; } = "Debit";
+    public Guid? RefOrderId { get; set; }
+    public Order? Order { get; set; }   // ✅ ADD
 
-        public string Reason { get; set; } = string.Empty;   // ✅ BỔ SUNG
+    public decimal Amount { get; set; }
+    public string Action { get; set; } = "Debit";
+    public string Reason { get; set; } = string.Empty;
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 }

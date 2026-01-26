@@ -57,7 +57,7 @@ class ApiConfig {
   static String get categories => "$productBaseUrl/api/Categories";
   static String get stockImports => "$productBaseUrl/api/StockImports";
   static String get checkStock => "$productBaseUrl/api/Products/check-stock";
-
+  static String get lowStock => "$products/low-stock";
   // Helper: Lấy chi tiết sản phẩm
   static String productDetail(int id) => "$products/$id";
 

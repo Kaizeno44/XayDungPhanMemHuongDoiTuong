@@ -1,10 +1,12 @@
-import 'package:bizflow_mobile/models.dart';
-import 'package:bizflow_mobile/order_history_screen.dart';
-import 'package:bizflow_mobile/providers/auth_provider.dart';
-import 'package:bizflow_mobile/order_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+
+// --- IMPORTS ---
+import 'package:bizflow_mobile/models.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart';
+import 'package:bizflow_mobile/order_service.dart';
+import 'package:bizflow_mobile/order_history_screen.dart'; // Đảm bảo import đúng đường dẫn
 
 class DebtListScreen extends ConsumerStatefulWidget {
   const DebtListScreen({super.key});
@@ -16,6 +18,7 @@ class DebtListScreen extends ConsumerStatefulWidget {
 class _DebtListScreenState extends ConsumerState<DebtListScreen> {
   final _orderService = OrderService();
   final _currencyFormat = NumberFormat("#,##0", "vi_VN");
+
   String _searchQuery = "";
   List<Customer> _allCustomers = [];
   bool _isLoading = true;
@@ -23,6 +26,7 @@ class _DebtListScreenState extends ConsumerState<DebtListScreen> {
   @override
   void initState() {
     super.initState();
+    // Gọi API ngay khi màn hình load xong
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchCustomers());
   }
 
@@ -45,111 +49,185 @@ class _DebtListScreenState extends ConsumerState<DebtListScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+      debugPrint("Lỗi tải khách hàng: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Sắp xếp: Ai nợ đưa lên đầu, sau đó mới đến người không nợ
+    // 1. Logic lọc & Sắp xếp (Người nợ nhiều lên đầu)
     final filteredList = _allCustomers.where((c) {
       final query = _searchQuery.toLowerCase();
       return c.name.toLowerCase().contains(query) || c.phone.contains(query);
     }).toList()..sort((a, b) => b.currentDebt.compareTo(a.currentDebt));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Sổ Nợ"),
-        // ✅ BỎ: backgroundColor: Colors.white (Để nó tự ăn theo Theme Cam)
-        // ✅ BỎ: foregroundColor: Colors.black
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sort),
-            tooltip: "Sắp xếp",
-            onPressed: () {
-              // Có thể thêm logic filter nâng cao ở đây
-            },
+    // 2. Tính tổng nợ hiển thị
+    final totalDebt = filteredList.fold(
+      0.0,
+      (sum, item) => sum + item.currentDebt,
+    );
+
+    return GestureDetector(
+      // [UX] Chạm ra ngoài để ẩn bàn phím
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: const Text(
+            "Sổ Nợ",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
           ),
-        ],
-      ),
-      backgroundColor: Colors.grey[100], // Nền xám nhẹ làm nổi bật thẻ
-      body: Column(
-        children: [
-          // --- THANH TÌM KIẾM ---
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            color: Theme.of(context).primaryColor, // Nền cam phần trên
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Tìm tên hoặc số điện thoại...",
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-              ),
-              onChanged: (value) => setState(() => _searchQuery = value),
+          centerTitle: true,
+          // [THEME] Đồng bộ màu Cam đậm
+          backgroundColor: Colors.orange[800],
+          foregroundColor: Colors.white,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: "Tải lại",
+              onPressed: () {
+                setState(() => _isLoading = true);
+                _fetchCustomers();
+              },
             ),
-          ),
-
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : filteredList.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.person_off,
-                          size: 64,
-                          color: Colors.grey[300],
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          "Không tìm thấy khách hàng",
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: _fetchCustomers,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filteredList.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final customer = filteredList[index];
-                        final hasDebt = customer.currentDebt > 0;
-
-                        return _buildCustomerCard(customer, hasDebt);
-                      },
-                    ),
+          ],
+        ),
+        body: Column(
+          children: [
+            // --- HEADER: TÌM KIẾM & TỔNG KẾT ---
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              decoration: BoxDecoration(
+                color: Colors.orange[800], // Màu nền liền mạch với AppBar
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.orange.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
                   ),
-          ),
-        ],
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Thanh tìm kiếm
+                  TextField(
+                    decoration: InputDecoration(
+                      hintText: "Tìm tên, số điện thoại...",
+                      prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                      ),
+                      isDense: true,
+                    ),
+                    onChanged: (value) => setState(() => _searchQuery = value),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Thống kê tổng nợ
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.account_balance_wallet,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            "Tổng nợ cần thu:",
+                            style: TextStyle(color: Colors.white, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        "${_currencyFormat.format(totalDebt)} đ",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // --- DANH SÁCH KHÁCH HÀNG ---
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : filteredList.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.person_search,
+                            size: 64,
+                            color: Colors.grey[300],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            "Không tìm thấy khách hàng nào",
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _fetchCustomers,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredList.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final customer = filteredList[index];
+                          return _buildCustomerCard(customer);
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildCustomerCard(Customer customer, bool hasDebt) {
+  Widget _buildCustomerCard(Customer customer) {
+    final hasDebt = customer.currentDebt > 0;
+
     return Card(
-      elevation: hasDebt ? 3 : 1, // Card nợ nổi hơn chút
-      shadowColor: hasDebt ? Colors.red.withOpacity(0.2) : Colors.black12,
+      elevation: hasDebt ? 2 : 0,
+      color: Colors.white,
+      shadowColor: Colors.black.withOpacity(0.1),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        // Viền đỏ nhẹ nếu có nợ, không viền nếu sạch
+        borderRadius: BorderRadius.circular(12),
         side: hasDebt
             ? BorderSide(color: Colors.red.shade100, width: 1)
-            : BorderSide.none,
+            : BorderSide(color: Colors.grey.shade200),
       ),
-      color: Colors.white,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         onTap: () async {
           await Navigator.push(
             context,
@@ -160,31 +238,36 @@ class _DebtListScreenState extends ConsumerState<DebtListScreen> {
               ),
             ),
           );
-          _fetchCustomers();
+          _fetchCustomers(); // Refresh lại sau khi quay về
         },
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // --- AVATAR ---
+              // Avatar Circle
               Container(
-                width: 50,
-                height: 50,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  color: hasDebt ? Colors.red.shade50 : Colors.green.shade50,
+                  color: hasDebt ? Colors.red[50] : Colors.blue[50],
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  hasDebt
-                      ? Icons.history_edu
-                      : Icons.check_circle_outline, // Icon ý nghĩa hơn
-                  color: hasDebt ? Colors.red : Colors.green,
-                  size: 28,
+                child: Center(
+                  child: Text(
+                    customer.name.isNotEmpty
+                        ? customer.name[0].toUpperCase()
+                        : "?",
+                    style: TextStyle(
+                      color: hasDebt ? Colors.red[700] : Colors.blue[700],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
 
-              // --- THÔNG TIN ---
+              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,57 +279,72 @@ class _DebtListScreenState extends ConsumerState<DebtListScreen> {
                         fontSize: 16,
                         color: Colors.black87,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      customer.phone.isNotEmpty
-                          ? customer.phone
-                          : "Chưa có SĐT",
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    Row(
+                      children: [
+                        Icon(Icons.phone, size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          customer.phone.isNotEmpty ? customer.phone : "---",
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
 
-              // --- SỐ TIỀN ---
+              // Debt Amount
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   if (hasDebt) ...[
                     Text(
-                      "ĐANG NỢ",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.red[300],
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
                       "${_currencyFormat.format(customer.currentDebt)} đ",
                       style: const TextStyle(
-                        color: Colors.red, // Màu đỏ cảnh báo
+                        color: Colors.red,
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        "Chưa thanh toán",
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ] else ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                    const Text(
+                      "0 đ",
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        "Sạch nợ",
-                        style: TextStyle(
-                          color: Colors.green[700],
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Sạch nợ",
+                      style: TextStyle(color: Colors.green, fontSize: 11),
                     ),
                   ],
                 ],

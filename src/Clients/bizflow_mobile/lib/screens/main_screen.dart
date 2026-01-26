@@ -1,31 +1,92 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Import để dùng SystemNavigator.pop()
-import 'package:bizflow_mobile/screens/owner_dashboard_screen.dart';
-import 'package:bizflow_mobile/screens/product_list_screen.dart';
-import 'package:bizflow_mobile/screens/warehouse_screen.dart';
-import 'package:bizflow_mobile/screens/debt_list_screen.dart'; // [QUAN TRỌNG] Import màn hình Sổ nợ
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // [MỚI] Import Riverpod
 
-class MainScreen extends StatefulWidget {
+import '../providers/auth_provider.dart'; // Import AuthProvider để lấy Role
+import 'owner_dashboard_screen.dart';
+import 'product_list_screen.dart';
+import 'warehouse_screen.dart';
+import 'debt_list_screen.dart';
+
+// [MỚI] Chuyển thành ConsumerStatefulWidget để lắng nghe Provider
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   int _currentIndex = 0;
   DateTime? _lastPressedAt;
 
-  // Danh sách các màn hình (Đã thêm Sổ nợ vào cuối)
-  final List<Widget> _screens = [
-    const OwnerDashboardScreen(), // Index 0
-    const ProductListScreen(), // Index 1
-    const WarehouseScreen(), // Index 2
-    const DebtListScreen(), // Index 3: Sổ nợ
-  ];
+  // Khai báo danh sách rỗng, sẽ khởi tạo trong build
+  List<Widget> _screens = [];
+  List<BottomNavigationBarItem> _navItems = [];
 
   @override
   Widget build(BuildContext context) {
+    // 1. Lấy thông tin User hiện tại từ AuthProvider
+    final authState = ref.watch(authNotifierProvider);
+    final userRole = authState.currentUser?.role;
+
+    // 2. Xây dựng danh sách màn hình dựa trên Role
+    // Lưu ý: Bạn cần kiểm tra chính xác chuỗi role trong DB của bạn là "Owner", "Admin" hay "Merchant"
+    final isOwner = userRole == 'Owner' || userRole == 'Admin';
+
+    _screens = [];
+    _navItems = [];
+
+    // --- A. QUYỀN CHỦ CỬA HÀNG (Thấy Dashboard) ---
+    if (isOwner) {
+      _screens.add(const OwnerDashboardScreen());
+      _navItems.add(
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.dashboard_outlined),
+          activeIcon: Icon(Icons.dashboard),
+          label: 'Tổng quan',
+        ),
+      );
+    }
+
+    // --- B. CÁC MÀN HÌNH CHUNG (Ai cũng thấy) ---
+
+    // 1. Sản phẩm (Bán hàng/POS)
+    _screens.add(const ProductListScreen());
+    _navItems.add(
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.inventory_2_outlined),
+        activeIcon: Icon(Icons.inventory),
+        label: 'Sản phẩm',
+      ),
+    );
+
+    // 2. Kho hàng (Nhập kho)
+    _screens.add(const WarehouseScreen());
+    _navItems.add(
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.warehouse_outlined),
+        activeIcon: Icon(Icons.warehouse),
+        label: 'Kho hàng',
+      ),
+    );
+
+    // 3. Sổ nợ
+    _screens.add(const DebtListScreen());
+    _navItems.add(
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.menu_book_outlined),
+        activeIcon: Icon(Icons.menu_book),
+        label: 'Sổ nợ',
+      ),
+    );
+
+    // --- LOGIC AN TOÀN ---
+    // Nếu index hiện tại vượt quá độ dài danh sách (do đổi role), reset về 0
+    if (_currentIndex >= _screens.length) {
+      _currentIndex = 0;
+    }
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
@@ -33,7 +94,7 @@ class _MainScreenState extends State<MainScreen> {
         _handleBackButton();
       },
       child: Scaffold(
-        // IndexedStack giữ trạng thái các màn hình khi chuyển tab
+        // IndexedStack giữ trạng thái các màn hình
         body: IndexedStack(index: _currentIndex, children: _screens),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
@@ -42,44 +103,16 @@ class _MainScreenState extends State<MainScreen> {
               _currentIndex = index;
             });
           },
-          // Thiết lập Type Fixed để hiển thị đều 4 icon
           type: BottomNavigationBarType.fixed,
-
-          // Theme global trong main.dart đã lo phần màu sắc
-          items: const [
-            // Tab 1: Tổng quan
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Tổng quan',
-            ),
-            // Tab 2: Sản phẩm
-            BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined),
-              activeIcon: Icon(Icons.inventory),
-              label: 'Sản phẩm',
-            ),
-            // Tab 3: Kho hàng
-            BottomNavigationBarItem(
-              icon: Icon(Icons.warehouse_outlined),
-              activeIcon: Icon(Icons.warehouse),
-              label: 'Kho hàng',
-            ),
-            // Tab 4: Sổ nợ (Đã thêm lại)
-            BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book_outlined), // Icon sách/sổ
-              activeIcon: Icon(Icons.menu_book),
-              label: 'Sổ nợ',
-            ),
-          ],
+          // Màu sắc đã được định nghĩa trong Theme (main.dart)
+          items: _navItems,
         ),
       ),
     );
   }
 
-  // --- LOGIC XỬ LÝ NÚT BACK (ANDROID) ---
   void _handleBackButton() {
-    // 1. Nếu đang ở tab khác (không phải Tổng quan), quay về tab Tổng quan
+    // Nếu đang ở tab khác tab đầu tiên, quay về tab đầu
     if (_currentIndex != 0) {
       setState(() {
         _currentIndex = 0;
@@ -87,7 +120,7 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // 2. Nếu đang ở tab Tổng quan, yêu cầu nhấn 2 lần để thoát
+    // Nếu đang ở tab đầu tiên (Dashboard hoặc Sản phẩm tùy role), confirm thoát
     final now = DateTime.now();
     if (_lastPressedAt == null ||
         now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
@@ -103,7 +136,6 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // 3. Thoát ứng dụng
     SystemNavigator.pop();
   }
 }

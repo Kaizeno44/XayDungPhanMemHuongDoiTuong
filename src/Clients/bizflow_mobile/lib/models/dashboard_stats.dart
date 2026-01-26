@@ -2,14 +2,17 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'dashboard_stats.g.dart';
 
+// ==========================================
+// 1. DOANH THU THEO NGÀY
+// ==========================================
 @JsonSerializable()
 class DailyRevenue {
-  // Backend trả về: "dayName"
+  // Backend: "dayName" (Ví dụ: "T2", "12/05")
+  @JsonKey(defaultValue: "")
   final String dayName;
 
-  // Backend trả về: "amount" (chữ thường)
-  // SỬA: Đổi từ 'Amount' thành 'amount' hoặc bỏ luôn @JsonKey cũng được
-  @JsonKey(name: 'amount')
+  // Backend: "amount"
+  @JsonKey(name: 'amount', defaultValue: 0.0)
   final double amount;
 
   DailyRevenue(this.dayName, this.amount);
@@ -19,20 +22,23 @@ class DailyRevenue {
   Map<String, dynamic> toJson() => _$DailyRevenueToJson(this);
 }
 
+// ==========================================
+// 2. SẢN PHẨM BÁN CHẠY (TOP 5)
+// ==========================================
 @JsonSerializable()
 class TopProduct {
+  @JsonKey(defaultValue: 0)
   final int productId;
 
-  // Backend có thể không trả về productName nếu truy vấn LINQ chưa Include đúng,
-  // nên cho phép null (String?) để an toàn.
+  // Cho phép null, nếu null thì UI tự hiển thị "Sản phẩm #ID"
   final String? productName;
 
-  // Backend trả về: "totalQuantity"
-  @JsonKey(name: 'totalQuantity')
+  // Backend: "totalQuantity"
+  @JsonKey(name: 'totalQuantity', defaultValue: 0.0)
   final double totalSold;
 
-  // Backend trả về: "totalRevenue"
-  @JsonKey(name: 'totalRevenue')
+  // Backend: "totalRevenue"
+  @JsonKey(name: 'totalRevenue', defaultValue: 0.0)
   final double totalRevenue;
 
   TopProduct(
@@ -47,22 +53,66 @@ class TopProduct {
   Map<String, dynamic> toJson() => _$TopProductToJson(this);
 }
 
+// ==========================================
+// 3. SẢN PHẨM SẮP HẾT HÀNG (MỚI)
+// ==========================================
+@JsonSerializable()
+class LowStockItem {
+  @JsonKey(defaultValue: 0)
+  final int id;
+
+  @JsonKey(defaultValue: "Sản phẩm chưa đặt tên")
+  final String name;
+
+  @JsonKey(defaultValue: "")
+  final String sku;
+
+  // Backend có thể trả về "currentStock" hoặc "quantity"
+  // Bạn cần check kỹ backend trả key nào. Ở đây mình map theo "currentStock"
+  @JsonKey(name: 'currentStock', defaultValue: 0.0)
+  final double currentStock;
+
+  LowStockItem({
+    required this.id,
+    required this.name,
+    required this.sku,
+    required this.currentStock,
+  });
+
+  factory LowStockItem.fromJson(Map<String, dynamic> json) =>
+      _$LowStockItemFromJson(json);
+  Map<String, dynamic> toJson() => _$LowStockItemToJson(this);
+}
+
+// ==========================================
+// 4. TỔNG HỢP DASHBOARD
+// ==========================================
 @JsonSerializable()
 class DashboardStats {
-  // Backend trả về: "todayRevenue"
+  // Backend: "todayRevenue"
+  @JsonKey(defaultValue: 0.0)
   final double todayRevenue;
 
-  // Backend trả về: "todayOrdersCount"
-  final int todayOrdersCount; // Sửa tên biến cho khớp luôn để đỡ dùng @JsonKey
+  // Backend: "todayOrdersCount"
+  @JsonKey(defaultValue: 0)
+  final int todayOrdersCount;
 
-  // Backend trả về: "totalDebt"
+  // Backend: "totalDebt"
+  @JsonKey(defaultValue: 0.0)
   final double totalDebt;
 
-  // Backend trả về: "weeklyRevenue"
+  // Backend: "weeklyRevenue" - List doanh thu 7 ngày
+  @JsonKey(defaultValue: [])
   final List<DailyRevenue> weeklyRevenue;
 
-  // Backend trả về: "topProducts"
+  // Backend: "topProducts" - List Top 5
+  @JsonKey(defaultValue: [])
   final List<TopProduct> topProducts;
+
+  // [MỚI] Backend: "lowStockItems" (Hoặc tên key bạn tự quy định khi gọi API song song)
+  // Đây là danh sách sản phẩm sắp hết hàng
+  @JsonKey(defaultValue: [])
+  final List<LowStockItem> lowStockItems;
 
   DashboardStats({
     required this.todayRevenue,
@@ -70,6 +120,7 @@ class DashboardStats {
     required this.totalDebt,
     required this.weeklyRevenue,
     required this.topProducts,
+    required this.lowStockItems, // Nhớ required dòng này
   });
 
   factory DashboardStats.fromJson(Map<String, dynamic> json) =>

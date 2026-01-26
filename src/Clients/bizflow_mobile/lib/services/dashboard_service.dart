@@ -4,7 +4,7 @@ import '../models/dashboard_stats.dart';
 import '../core/config/api_config.dart';
 
 class DashboardService {
-  // 1. Hàm đọc số thực an toàn (Bất chấp null, string, int)
+  // 1. Hàm đọc số thực an toàn
   double _parseSafeDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
@@ -22,65 +22,122 @@ class DashboardService {
 
   Future<DashboardStats> getStats(String storeId) async {
     try {
-      // Gọi API lấy thống kê
-      final uri = Uri.parse('${ApiConfig.dashboardStats}?storeId=$storeId');
-      print("📡 Calling Dashboard API: $uri");
+      // --- BƯỚC 1: CHUẨN BỊ URL ---
 
-      final response = await http.get(uri, headers: ApiConfig.headers);
+      // URL API 1: Thống kê chính (Doanh thu, đơn hàng, biểu đồ)
+      final statsUri = Uri.parse(
+        '${ApiConfig.dashboardStats}?storeId=$storeId',
+      );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      // URL API 2: Sản phẩm sắp hết hàng (Lấy từ Product API)
+      // Lưu ý: Đảm bảo đường dẫn này đúng với Backend của bạn
+      // Nếu ApiConfig chưa có baseUrl, hãy thay thế bằng chuỗi cứng hoặc thêm vào ApiConfig
+      final lowStockUri = Uri.parse(
+        '${ApiConfig.lowStock}?storeId=$storeId&threshold=10',
+      );
 
-        return DashboardStats(
-          // Mapping an toàn từng trường
-          todayRevenue: _parseSafeDouble(
-            data['todayRevenue'] ?? data['TodayRevenue'],
-          ),
+      print("📡 [Dashboard] Fetching data...");
+      print("   - Stats: $statsUri");
+      print("   - LowStock: $lowStockUri");
 
-          // Ưu tiên tìm 'todayOrdersCount' (từ backend)
-          todayOrdersCount: _parseSafeInt(
-            data['todayOrdersCount'] ??
-                data['TodayOrdersCount'] ??
-                data['todayOrders'],
-          ),
+      // --- BƯỚC 2: GỌI API SONG SONG (Tối ưu tốc độ) ---
+      final responses = await Future.wait([
+        http.get(statsUri, headers: ApiConfig.headers), // Index 0
+        http.get(lowStockUri, headers: ApiConfig.headers), // Index 1
+      ]);
 
-          totalDebt: _parseSafeDouble(data['totalDebt'] ?? data['TotalDebt']),
+      final statsResponse = responses[0];
+      final lowStockResponse = responses[1];
 
-          // Xử lý mảng WeeklyRevenue
-          weeklyRevenue: (data['weeklyRevenue'] as List? ?? []).map((item) {
-            return DailyRevenue(
-              item['dayName'] ?? item['DayName'] ?? '',
-              _parseSafeDouble(item['amount'] ?? item['Amount']),
-            );
-          }).toList(),
+      // --- BƯỚC 3: XỬ LÝ DỮ LIỆU THỐNG KÊ CHÍNH ---
+      double todayRevenue = 0;
+      int todayOrdersCount = 0;
+      double totalDebt = 0;
+      List<DailyRevenue> weeklyRevenue = [];
+      List<TopProduct> topProducts = [];
 
-          // Xử lý mảng TopProducts
-          topProducts: (data['topProducts'] as List? ?? []).map((item) {
-            return TopProduct(
-              item['productId'] ?? 0,
-              item['productName'] ?? 'Sản phẩm #${item['productId']}',
-              _parseSafeDouble(
-                item['totalQuantity'] ??
-                    item['TotalQuantity'] ??
-                    item['totalSold'],
-              ),
-              _parseSafeDouble(item['totalRevenue'] ?? item['TotalRevenue']),
-            );
-          }).toList(),
+      if (statsResponse.statusCode == 200) {
+        final data = json.decode(statsResponse.body);
+
+        todayRevenue = _parseSafeDouble(
+          data['todayRevenue'] ?? data['TodayRevenue'],
         );
+
+        todayOrdersCount = _parseSafeInt(
+          data['todayOrdersCount'] ??
+              data['TodayOrdersCount'] ??
+              data['todayOrders'],
+        );
+
+        totalDebt = _parseSafeDouble(data['totalDebt'] ?? data['TotalDebt']);
+
+        weeklyRevenue = (data['weeklyRevenue'] as List? ?? []).map((item) {
+          return DailyRevenue(
+            item['dayName'] ?? item['DayName'] ?? '',
+            _parseSafeDouble(item['amount'] ?? item['Amount']),
+          );
+        }).toList();
+
+        topProducts = (data['topProducts'] as List? ?? []).map((item) {
+          return TopProduct(
+            item['productId'] ?? 0,
+            item['productName'], // Để null cho model tự xử lý hiển thị
+            _parseSafeDouble(item['totalQuantity'] ?? item['totalSold']),
+            _parseSafeDouble(item['totalRevenue']),
+          );
+        }).toList();
       } else {
-        print("❌ Lỗi API Dashboard: ${response.statusCode} - ${response.body}");
-        throw Exception("Lỗi API: ${response.statusCode}");
+        print(
+          "❌ Lỗi API Stats: ${statsResponse.statusCode} - ${statsResponse.body}",
+        );
       }
+
+      // --- BƯỚC 4: XỬ LÝ DỮ LIỆU SẮP HẾT HÀNG ---
+      List<LowStockItem> lowStockItems = [];
+
+      if (lowStockResponse.statusCode == 200) {
+        final dynamic decoded = json.decode(lowStockResponse.body);
+        // Kiểm tra xem backend trả về List trực tiếp hay object chứa list
+        final List<dynamic> listData = (decoded is List)
+            ? decoded
+            : (decoded['items'] ?? []);
+
+        lowStockItems = listData.map((item) {
+          return LowStockItem(
+            id: item['id'] ?? item['productId'] ?? 0,
+            name: item['name'] ?? item['productName'] ?? 'Sản phẩm lỗi tên',
+            sku: item['sku'] ?? '',
+            currentStock: _parseSafeDouble(
+              item['currentStock'] ?? item['quantity'],
+            ),
+          );
+        }).toList();
+      } else {
+        // Không throw lỗi ở đây để Dashboard vẫn hiện các thông tin khác
+        print(
+          "⚠️ Warning: Không lấy được Low Stock data (${lowStockResponse.statusCode})",
+        );
+      }
+
+      // --- BƯỚC 5: TRẢ VỀ KẾT QUẢ TỔNG HỢP ---
+      return DashboardStats(
+        todayRevenue: todayRevenue,
+        todayOrdersCount: todayOrdersCount,
+        totalDebt: totalDebt,
+        weeklyRevenue: weeklyRevenue,
+        topProducts: topProducts,
+        lowStockItems: lowStockItems,
+      );
     } catch (e) {
-      print("⚠️ Exception Dashboard: $e");
-      // Trả về dữ liệu rỗng để App không bị chết
+      print("⚠️ Exception DashboardService: $e");
+      // Trả về dữ liệu rỗng an toàn để App không bị Crash màn hình trắng
       return DashboardStats(
         todayRevenue: 0,
         todayOrdersCount: 0,
         totalDebt: 0,
         weeklyRevenue: [],
         topProducts: [],
+        lowStockItems: [],
       );
     }
   }

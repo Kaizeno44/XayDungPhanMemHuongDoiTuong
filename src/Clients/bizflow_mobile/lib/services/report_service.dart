@@ -66,6 +66,7 @@ class ReportService {
               _parseSafeDouble(item['totalRevenue'] ?? item['TotalRevenue']),
             );
           }).toList(),
+          lowStockItems: [],
         );
       } else {
         print("❌ Lỗi API Dashboard: ${response.statusCode} - ${response.body}");
@@ -81,6 +82,7 @@ class ReportService {
         totalDebt: 0,
         weeklyRevenue: [],
         topProducts: [],
+        lowStockItems: [],
       );
     }
   }

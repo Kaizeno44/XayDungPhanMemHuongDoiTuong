@@ -30,10 +30,12 @@ namespace BizFlow.ProductAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetProducts(
             [FromQuery] string? keyword,
+            [FromQuery] Guid? storeId,
             [FromQuery] int categoryId = 0,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10)
         {
+            Console.WriteLine($"--> ProductAPI: GetProducts called. StoreId: {storeId}");
             var query = _context.Products
                 .Include(p => p.Category)
                 .Include(p => p.Inventory)
@@ -42,6 +44,11 @@ namespace BizFlow.ProductAPI.Controllers
 
             if (!string.IsNullOrEmpty(keyword))
                 query = query.Where(p => p.Name.Contains(keyword) || p.Sku.Contains(keyword));
+
+            if (storeId.HasValue)
+                query = query.Where(p => p.StoreId == storeId.Value);
+            else
+                return Ok(new { TotalItems = 0, Page = page, PageSize = pageSize, Data = new List<Product>() });
 
             if (categoryId > 0)
                 query = query.Where(p => p.CategoryId == categoryId);
@@ -63,11 +70,31 @@ namespace BizFlow.ProductAPI.Controllers
             });
         }
 
+        // API Debug để kiểm tra StoreId
+        [HttpGet("debug-all")]
+        public async Task<IActionResult> DebugAllProducts()
+        {
+            var products = await _context.Products
+                .Select(p => new { p.Id, p.Name, p.StoreId })
+                .ToListAsync();
+            return Ok(products);
+        }
+
         // 1.2 Lấy tổng số lượng sản phẩm
         [HttpGet("count")]
-        public async Task<IActionResult> GetProductCount()
+        public async Task<IActionResult> GetProductCount([FromQuery] Guid? storeId)
         {
-            var count = await _context.Products.CountAsync();
+            var query = _context.Products.AsQueryable();
+            if (storeId.HasValue)
+            {
+                query = query.Where(p => p.StoreId == storeId.Value);
+            }
+            else
+            {
+                return Ok(new { count = 0 });
+            }
+
+            var count = await query.CountAsync();
             return Ok(new { count });
         }
 
@@ -175,7 +202,8 @@ namespace BizFlow.ProductAPI.Controllers
                     CategoryId = request.CategoryId,
                     BaseUnit = request.BaseUnitName,
                     ImageUrl = request.ImageUrl, // Đã map thêm ảnh
-                    Description = request.Description
+                    Description = request.Description,
+                    StoreId = request.StoreId // 👈 Lưu StoreId
                 };
                 _context.Products.Add(product);
                 await _context.SaveChangesAsync();
@@ -306,16 +334,25 @@ namespace BizFlow.ProductAPI.Controllers
 
         // 3.3 Lấy danh sách sản phẩm sắp hết hàng (Cảnh báo tồn kho)
         [HttpGet("low-stock")]
-        public async Task<IActionResult> GetLowStockProducts([FromQuery] double threshold = 10)
+        public async Task<IActionResult> GetLowStockProducts(
+            [FromQuery] Guid? storeId,
+            [FromQuery] double threshold = 10)
         {
-            var lowStockProducts = await _context.Products
+            if (!storeId.HasValue) return Ok(new List<object>());
+
+            var query = _context.Products
                 .Include(p => p.Inventory)
+                .Where(p => p.StoreId == storeId.Value)
+                .AsQueryable();
+
+            var lowStockProducts = await query
                 .Where(p => p.Inventory.Quantity <= threshold)
                 .Select(p => new
                 {
                     p.Id,
                     p.Name,
                     p.Sku,
+                    p.StoreId,
                     CurrentStock = p.Inventory.Quantity
                 })
                 .OrderBy(p => p.CurrentStock)

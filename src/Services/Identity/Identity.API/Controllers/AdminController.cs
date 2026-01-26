@@ -25,6 +25,62 @@ namespace Identity.API.Controllers
         }
 
         // ==========================================
+        // API: Lấy thống kê tổng quan cho SuperAdmin
+        // ==========================================
+        [HttpGet("stats")]
+        public async Task<IActionResult> GetAdminStats()
+        {
+            // 1. Lấy danh sách tất cả chủ hộ (Owner)
+            var owners = await _userManager.GetUsersInRoleAsync("Owner");
+            
+            // 2. Tính số chủ hộ đang hoạt động
+            var activeOwnersCount = owners.Count(u => u.IsActive);
+
+            // 3. Tính số đăng ký mới trong tháng này
+            var now = DateTime.UtcNow;
+            var firstDayOfMonth = new DateTime(now.Year, now.Month, 1);
+            var newRegistrationsCount = owners.Count(u => u.CreatedAt >= firstDayOfMonth);
+
+            // 4. Tính tổng doanh thu từ gói cước
+            // Lấy tất cả các Store có gán gói cước và tính tổng Price
+            var totalRevenue = await _context.Stores
+                .Include(s => s.SubscriptionPlan)
+                .Where(s => s.SubscriptionPlanId != null)
+                .SumAsync(s => s.SubscriptionPlan.Price);
+
+            // 5. Tính toán thay đổi so với tháng trước
+            var lastMonth = now.AddMonths(-1);
+            var firstDayOfLastMonth = new DateTime(lastMonth.Year, lastMonth.Month, 1);
+
+            // A. Thay đổi số lượng chủ hộ (So với tháng trước)
+            var ownersLastMonth = owners.Count(u => u.CreatedAt < firstDayOfMonth);
+            var ownersChange = owners.Count - ownersLastMonth;
+            var ownersChangeText = ownersChange >= 0 ? $"+{ownersChange}" : ownersChange.ToString();
+
+            // B. Thay đổi số lượng đăng ký mới (So với tháng trước)
+            var lastMonthRegistrations = owners.Count(u => u.CreatedAt >= firstDayOfLastMonth && u.CreatedAt < firstDayOfMonth);
+            var registrationChange = newRegistrationsCount - lastMonthRegistrations;
+            var registrationChangeText = registrationChange >= 0 ? $"+{registrationChange}" : registrationChange.ToString();
+
+            // C. Thay đổi doanh thu (Giả lập dựa trên tỷ lệ tăng trưởng chủ hộ)
+            decimal revenueChangePercent = 0;
+            if (totalRevenue > 0 && ownersLastMonth > 0) {
+                revenueChangePercent = (decimal)ownersChange / ownersLastMonth * 100;
+            }
+            var revenueChangeText = revenueChangePercent >= 0 ? $"+{revenueChangePercent:N1}%" : $"{revenueChangePercent:N1}%";
+
+            return Ok(new
+            {
+                totalRevenue = totalRevenue,
+                activeOwners = activeOwnersCount,
+                newRegistrations = newRegistrationsCount,
+                revenueChange = revenueChangeText,
+                ownersChange = ownersChangeText,
+                registrationsChange = registrationChangeText
+            });
+        }
+
+        // ==========================================
         // API 1: Lấy danh sách USER theo Role (CẦN THÊM CÁI NÀY)
         // Frontend gọi: GET /api/admin/users?role=Owner
         // ==========================================
@@ -80,6 +136,35 @@ namespace Identity.API.Controllers
         }
 
         // ==========================================
+        // API: Lấy danh sách gói cước
+        // ==========================================
+        [HttpGet("plans")]
+        public async Task<IActionResult> GetPlans()
+        {
+            var plans = await _context.SubscriptionPlans.ToListAsync();
+            return Ok(plans);
+        }
+
+        // ==========================================
+        // API: Cập nhật gói cước
+        // ==========================================
+        [HttpPut("plans/{id}")]
+        public async Task<IActionResult> UpdatePlan(Guid id, [FromBody] SubscriptionPlan request)
+        {
+            var plan = await _context.SubscriptionPlans.FindAsync(id);
+            if (plan == null) return NotFound("Không tìm thấy gói cước");
+
+            plan.Price = request.Price;
+            plan.MaxEmployees = request.MaxEmployees;
+            plan.Name = request.Name;
+            plan.DurationInMonths = request.DurationInMonths;
+            plan.AllowAI = request.AllowAI;
+
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Cập nhật gói cước thành công!" });
+        }
+
+        // ==========================================
         // API 3: Lấy danh sách Tenant (GIỮ NGUYÊN CỦA BẠN - Rất tốt)
         // Dùng cho trang "Quản lý Cửa hàng" sau này
         // ==========================================
@@ -124,9 +209,9 @@ namespace Identity.API.Controllers
                 Phone = "",
                 TaxCode = "",
                 
-                // Gán null vì mới tạo chưa mua gói
-                SubscriptionPlanId = null, 
-                SubscriptionExpiryDate = DateTime.UtcNow 
+                // Gán gói cước đã chọn
+                SubscriptionPlanId = request.SubscriptionPlanId, 
+                SubscriptionExpiryDate = DateTime.UtcNow.AddMonths(1) // Mặc định 1 tháng
             };
 
             _context.Stores.Add(newStore);

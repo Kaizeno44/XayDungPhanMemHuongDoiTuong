@@ -44,8 +44,8 @@ export default function MerchantDashboard() {
     try {
       // --- GỌI SONG SONG CÁC API ---
       const [productRes, dashboardStatsRes, lowStockRes, ordersRes] = await Promise.allSettled([
-        // 1. API Sản phẩm (Tổng số lượng)
-        axios.get("http://localhost:5000/api/products/count", {
+        // 1. API Sản phẩm (Tổng số lượng - Lọc theo StoreId)
+        axios.get(`http://localhost:5000/api/products/count?storeId=${storeId}`, {
            headers: { Authorization: `Bearer ${token}` }
         }),
         // 2. API Dashboard Stats (Doanh thu, Đơn hàng, Biểu đồ, Top 5)
@@ -53,11 +53,11 @@ export default function MerchantDashboard() {
            headers: { Authorization: `Bearer ${token}` }
         }),
         // 3. API Low Stock (Cảnh báo tồn kho)
-        axios.get("http://localhost:5000/api/Products/low-stock", {
+        axios.get(`http://localhost:5000/api/Products/low-stock?storeId=${storeId}`, {
            headers: { Authorization: `Bearer ${token}` }
         }),
-        // 4. API Lấy toàn bộ đơn hàng để tính doanh thu tháng
-        axios.get("http://localhost:5000/api/orders", {
+        // 4. API Lấy toàn bộ đơn hàng để tính doanh thu tháng (Lọc theo StoreId)
+        axios.get(`http://localhost:5000/api/orders?storeId=${storeId}`, {
            headers: { Authorization: `Bearer ${token}` }
         })
       ]);

@@ -8,5 +8,7 @@ namespace Identity.API.Models // <--- Chung namespace với file kia cho tiện
 
         // 👇 Cái này QUAN TRỌNG NHẤT: Phải có để tạo Cửa hàng
         public string StoreName { get; set; } = string.Empty; 
+
+        public Guid? SubscriptionPlanId { get; set; } // 👈 Thêm mã gói cước
     }
 }

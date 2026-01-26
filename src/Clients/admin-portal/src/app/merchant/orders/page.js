@@ -34,13 +34,8 @@ export default function OrdersPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Lọc bỏ các đơn hàng tĩnh ORD001, ORD002, ORD003 ở phía Frontend
-      const filteredOrders = response.data.filter(o => {
-        const code = o.orderCode || o.OrderCode || "";
-        return !["ORD001", "ORD002", "ORD003"].includes(code);
-      });
-      
-      setOrders(filteredOrders);
+      console.log("Orders data received:", response.data);
+      setOrders(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       console.error(err);
       message.error("Không thể tải danh sách đơn hàng.");
@@ -123,7 +118,11 @@ export default function OrdersPage() {
       title: "Tổng tiền", 
       dataIndex: "totalAmount", 
       key: "totalAmount",
-      render: (amount, record) => <span className="text-blue-600 font-bold">{(amount || record.TotalAmount)?.toLocaleString("vi-VN")} đ</span>
+      render: (amount, record) => {
+        const val = amount || record.TotalAmount || 0;
+        const num = typeof val === "number" ? val : parseFloat(val);
+        return <span className="text-blue-600 font-bold">{num.toLocaleString("vi-VN")} đ</span>
+      }
     },
     { 
       title: "Thanh toán", 

@@ -175,23 +175,47 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             child: asyncProducts.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      color: Colors.red,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 10),
-                    Text("Lỗi: ${err.toString().replaceAll('Exception:', '')}"),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: () =>
-                          ref.refresh(productListControllerProvider),
-                      child: const Text("Thử lại"),
-                    ),
-                  ],
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Đã xảy ra lỗi",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        err.toString().replaceAll('Exception:', ''),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () =>
+                            ref.refresh(productListControllerProvider),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Thử lại"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[800],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               data: (products) {

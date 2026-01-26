@@ -9,6 +9,7 @@ namespace BizFlow.ProductAPI.DTOs
         public required string ImageUrl { get; set; }
         public required string Description { get; set; }
         public int CategoryId { get; set; }
+        public Guid? StoreId { get; set; } // 👈 Thêm StoreId
         
         // Đơn vị tính gốc (ví dụ: Viên, Cái)
         public required string BaseUnitName { get; set; }

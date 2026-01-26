@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.Caching.Distributed; // 👈 Thêm using cho Redis
 
 namespace Identity.API.Controllers
 {
@@ -15,11 +16,32 @@ namespace Identity.API.Controllers
         // 👇 Thay _context bằng _userManager (Trợ lý đắc lực của Identity)
         private readonly UserManager<User> _userManager;
         private readonly IConfiguration _configuration;
+        private readonly IDistributedCache _cache; // 👈 Inject Redis Cache
 
-        public AuthController(UserManager<User> userManager, IConfiguration configuration)
+        public AuthController(UserManager<User> userManager, IConfiguration configuration, IDistributedCache cache)
         {
             _userManager = userManager;
             _configuration = configuration;
+            _cache = cache;
+        }
+
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            // 1. Lấy Token từ Header
+            var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            if (string.IsNullOrEmpty(token)) return BadRequest("Token không hợp lệ");
+
+            // 2. Lưu Token vào Redis Blacklist
+            // Thiết lập thời gian hết hạn trong Redis bằng thời gian hết hạn của Token (ở đây ta dùng 1 phút cho test)
+            var options = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1)
+            };
+
+            await _cache.SetStringAsync($"blacklist_{token}", "revoked", options);
+
+            return Ok(new { message = "Đăng xuất thành công, Token đã bị vô hiệu hóa." });
         }
 
         [HttpPost("login")]
@@ -52,7 +74,7 @@ namespace Identity.API.Controllers
             // 3. Kiểm tra khóa tài khoản
             if (!user.IsActive)
             {
-                return StatusCode(403, "Tài khoản bị khóa.");
+                return StatusCode(403, new { message = "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin để mở khóa." });
             }
 
             try

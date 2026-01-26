@@ -5,11 +5,52 @@ import Cookies from "js-cookie";
 import { Users, DollarSign, Activity, Settings } from "lucide-react"; // Cần cài lucide-react
 
 export default function AdminDashboard() {
-  // Fake số liệu tạm thời (Sau này thay bằng gọi API thật)
+  const [adminStats, setAdminStats] = useState({
+    totalRevenue: 0,
+    activeOwners: 0,
+    newRegistrations: 0,
+    revenueChange: "+0%",
+    ownersChange: "+0",
+    registrationsChange: "+0"
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const token = Cookies.get("accessToken");
+        const res = await axios.get("http://localhost:5000/api/admin/stats", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAdminStats(res.data);
+      } catch (err) {
+        console.error("Lỗi tải thống kê admin:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStats();
+  }, []);
+
   const stats = [
-    { label: "Tổng Doanh Thu", value: "150.000.000 đ", icon: <DollarSign className="text-green-600" />, change: "+12%" },
-    { label: "Chủ hộ đang hoạt động", value: "45", icon: <Users className="text-blue-600" />, change: "+5" },
-    { label: "Đăng ký mới (Tháng này)", value: "8", icon: <Activity className="text-purple-600" />, change: "+2" },
+    { 
+      label: "Tổng Doanh Thu", 
+      value: `${adminStats.totalRevenue.toLocaleString("vi-VN")} đ`, 
+      icon: <DollarSign className="text-green-600" />, 
+      change: adminStats.revenueChange 
+    },
+    { 
+      label: "Chủ hộ đang hoạt động", 
+      value: adminStats.activeOwners.toString(), 
+      icon: <Users className="text-blue-600" />, 
+      change: adminStats.ownersChange 
+    },
+    { 
+      label: "Đăng ký mới (Tháng này)", 
+      value: adminStats.newRegistrations.toString(), 
+      icon: <Activity className="text-purple-600" />, 
+      change: adminStats.registrationsChange 
+    },
   ];
 
   return (

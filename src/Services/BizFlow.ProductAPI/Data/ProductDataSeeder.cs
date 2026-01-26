@@ -15,6 +15,8 @@ namespace BizFlow.ProductAPI.Data
             // 2. Seed Categories (Danh mục)
             if (!await context.Categories.AnyAsync())
             {
+                var sampleStoreId = Guid.Parse("d2708c0c-847e-468e-976e-5776d5483033");
+
                 var cat1 = new Category { Name = "Vật liệu xây dựng", Code = "VL_XD" };
                 var cat2 = new Category { Name = "Điện nước", Code = "DIEN_NUOC" };
                 var cat3 = new Category { Name = "Sơn & Hóa chất", Code = "SON_HC" };
@@ -25,13 +27,13 @@ namespace BizFlow.ProductAPI.Data
                 // 3. Seed Products (Sản phẩm mẫu)
                 var products = new List<Product>
                 {
-                    new Product { Name = "Tôn lạnh Hoa Sen 0.45mm", Sku = "TON-HS-045", CategoryId = cat1.Id, BaseUnit = "Tấm", Description = "Tôn lạnh chất lượng cao" },
-                    new Product { Name = "Xi măng Hà Tiên PCB40", Sku = "XM-HT-PCB40", CategoryId = cat1.Id, BaseUnit = "Bao", Description = "Xi măng Hà Tiên đa dụng" },
-                    new Product { Name = "Gạch ống 8x8x18", Sku = "GACH-ONG", CategoryId = cat1.Id, BaseUnit = "Viên", Description = "Gạch xây dựng tiêu chuẩn" },
-                    new Product { Name = "Thép Pomina Phi 10", Sku = "THEP-P10", CategoryId = cat1.Id, BaseUnit = "Cây", Description = "Thép cuộn xây dựng" },
-                    new Product { Name = "Ống nhựa Tiền Phong D21", Sku = "ONG-TP-D21", CategoryId = cat2.Id, BaseUnit = "Mét", Description = "Ống dẫn nước PVC" },
-                    new Product { Name = "Dây điện Cadivi 2.5", Sku = "DAY-CV-25", CategoryId = cat2.Id, BaseUnit = "Cuộn", Description = "Dây điện lõi đồng" },
-                    new Product { Name = "Sơn Dulux 5in1 Trắng", Sku = "SON-DX-W", CategoryId = cat3.Id, BaseUnit = "Thùng", Description = "Sơn nội thất cao cấp" }
+                    new Product { Name = "Tôn lạnh Hoa Sen 0.45mm", Sku = "TON-HS-045", CategoryId = cat1.Id, BaseUnit = "Tấm", Description = "Tôn lạnh chất lượng cao", StoreId = sampleStoreId },
+                    new Product { Name = "Xi măng Hà Tiên PCB40", Sku = "XM-HT-PCB40", CategoryId = cat1.Id, BaseUnit = "Bao", Description = "Xi măng Hà Tiên đa dụng", StoreId = sampleStoreId },
+                    new Product { Name = "Gạch ống 8x8x18", Sku = "GACH-ONG", CategoryId = cat1.Id, BaseUnit = "Viên", Description = "Gạch xây dựng tiêu chuẩn", StoreId = sampleStoreId },
+                    new Product { Name = "Thép Pomina Phi 10", Sku = "THEP-P10", CategoryId = cat1.Id, BaseUnit = "Cây", Description = "Thép cuộn xây dựng", StoreId = sampleStoreId },
+                    new Product { Name = "Ống nhựa Tiền Phong D21", Sku = "ONG-TP-D21", CategoryId = cat2.Id, BaseUnit = "Mét", Description = "Ống dẫn nước PVC", StoreId = sampleStoreId },
+                    new Product { Name = "Dây điện Cadivi 2.5", Sku = "DAY-CV-25", CategoryId = cat2.Id, BaseUnit = "Cuộn", Description = "Dây điện lõi đồng", StoreId = sampleStoreId },
+                    new Product { Name = "Sơn Dulux 5in1 Trắng", Sku = "SON-DX-W", CategoryId = cat3.Id, BaseUnit = "Thùng", Description = "Sơn nội thất cao cấp", StoreId = sampleStoreId }
                 };
 
                 context.Products.AddRange(products);

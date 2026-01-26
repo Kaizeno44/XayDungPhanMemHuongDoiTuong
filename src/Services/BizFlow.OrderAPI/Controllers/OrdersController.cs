@@ -41,13 +41,15 @@ namespace BizFlow.OrderAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetOrders([FromQuery] Guid? storeId)
         {
-            var query = _context.Orders.AsQueryable();
+            Console.WriteLine($"--> GetOrders called. StoreId: {storeId}");
+            if (!storeId.HasValue) return Ok(new List<object>());
 
-            // Nếu có storeId, chỉ lấy đơn của store đó
-            if (storeId.HasValue)
-            {
-                query = query.Where(o => o.StoreId == storeId.Value);
-            }
+            var query = _context.Orders
+                .Where(o => o.StoreId == storeId.Value)
+                .AsQueryable();
+
+            var totalOrders = await _context.Orders.CountAsync();
+            Console.WriteLine($"--> Total orders in DB: {totalOrders}");
 
             var orders = await query
                 .OrderByDescending(o => o.OrderDate)

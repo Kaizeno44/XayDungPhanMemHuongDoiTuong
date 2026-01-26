@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import Cookies from "js-cookie";
@@ -8,13 +8,33 @@ import { ArrowLeft } from "lucide-react"; // Import icon quay lại
 export default function CreateOwnerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [plans, setPlans] = useState([]);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
-    storeName: "" 
+    storeName: "",
+    subscriptionPlanId: ""
   });
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const token = Cookies.get("accessToken");
+        const res = await axios.get("http://localhost:5000/api/admin/plans", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setPlans(res.data);
+        if (res.data.length > 0) {
+          setFormData(prev => ({ ...prev, subscriptionPlanId: res.data[0].id }));
+        }
+      } catch (err) {
+        console.error("Lỗi tải gói cước:", err);
+      }
+    };
+    fetchPlans();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -39,7 +59,8 @@ export default function CreateOwnerPage() {
           email: formData.email,
           password: formData.password,
           role: "Owner", 
-          storeName: formData.storeName 
+          storeName: formData.storeName,
+          subscriptionPlanId: formData.subscriptionPlanId
         },
         {
           headers: { Authorization: `Bearer ${token}` }
@@ -94,6 +115,23 @@ export default function CreateOwnerPage() {
             <label className="block text-sm font-medium text-gray-700">Email đăng nhập</label>
             <input type="email" name="email" required onChange={handleChange}
                 className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="owner@gmail.com" />
+            </div>
+
+            {/* Chọn gói dịch vụ */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700">Gói dịch vụ</label>
+                <select 
+                    name="subscriptionPlanId" 
+                    value={formData.subscriptionPlanId}
+                    onChange={handleChange}
+                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                    {plans.map(plan => (
+                        <option key={plan.id} value={plan.id}>
+                            {plan.name} - {plan.price.toLocaleString("vi-VN")} đ
+                        </option>
+                    ))}
+                </select>
             </div>
 
             {/* Mật khẩu */}

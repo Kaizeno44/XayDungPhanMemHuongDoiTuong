@@ -20,6 +20,7 @@ final class _$ProductService extends ProductService {
   @override
   Future<Response<dynamic>> getProducts({
     String? keyword,
+    String? storeId,
     int? categoryId,
     int page = 1,
     int pageSize = 10,
@@ -27,6 +28,7 @@ final class _$ProductService extends ProductService {
     final Uri $url = Uri.parse('/api/Products');
     final Map<String, dynamic> $params = <String, dynamic>{
       'keyword': keyword,
+      'storeId': storeId,
       'categoryId': categoryId,
       'page': page,
       'pageSize': pageSize,

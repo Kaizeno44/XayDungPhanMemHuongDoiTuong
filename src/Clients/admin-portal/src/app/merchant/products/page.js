@@ -5,6 +5,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from "@ant
 import axios from "axios";
 import Cookies from "js-cookie";
 import * as signalR from "@microsoft/signalr";
+import { jwtDecode } from "jwt-decode";
 
 const { Title } = Typography;
 
@@ -78,8 +79,14 @@ export default function ProductsPage() {
     setLoading(true);
     try {
       const token = Cookies.get("accessToken");
+      let storeId = "";
+      try {
+        const decoded = jwtDecode(token);
+        storeId = decoded.StoreId || decoded.storeId || "";
+      } catch (e) {}
+
       // Thêm timestamp để tránh cache trình duyệt
-      const response = await axios.get(`http://localhost:5000/api/products?t=${new Date().getTime()}`, {
+      const response = await axios.get(`http://localhost:5000/api/products?t=${new Date().getTime()}${storeId ? `&storeId=${storeId}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // API trả về { data: [...], totalItems: ... }
@@ -96,6 +103,12 @@ export default function ProductsPage() {
     try {
       const token = Cookies.get("accessToken");
       
+      let storeId = "";
+      try {
+        const decoded = jwtDecode(token);
+        storeId = decoded.StoreId || decoded.storeId || "";
+      } catch (e) {}
+
       if (editingProduct) {
         // Logic Cập nhật sản phẩm
         const units = editingProduct.productUnits || editingProduct.ProductUnits || [];
@@ -131,6 +144,7 @@ export default function ProductsPage() {
           name: values.name,
           sku: values.sku,
           categoryId: values.categoryId,
+          storeId: storeId, // 👈 Gửi StoreId
           baseUnitName: values.baseUnitName || "Cái",
           basePrice: values.price,
           initialStock: values.initialStock || 0,

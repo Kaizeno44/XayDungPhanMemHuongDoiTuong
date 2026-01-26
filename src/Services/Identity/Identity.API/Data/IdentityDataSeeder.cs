@@ -87,7 +87,7 @@ namespace Identity.API.Data
             {
                 sampleStore = new Store
                 {
-                    Id = Guid.NewGuid(),
+                    Id = Guid.Parse("d2708c0c-847e-468e-976e-5776d5483033"),
                     StoreName = sampleStoreName,
                     Address = "123 Đường Láng, Hà Nội",
                     Phone = "0987654321",
@@ -140,47 +140,14 @@ namespace Identity.API.Data
             }
 
             // ------------------------------------------------------------
-            // 7. TẠO DỮ LIỆU SỔ CÁI MẪU (LEDGER)
+            // 7. TẠO DỮ LIỆU SỔ CÁI MẪU (LEDGER) - Đã xóa theo yêu cầu
             // ------------------------------------------------------------
+            /*
             if (!await context.Ledgers.AnyAsync() && sampleStore != null)
             {
-                var ownerUser = await userManager.FindByEmailAsync(ownerEmail);
-                var ledgers = new List<Ledger>
-                {
-                    new Ledger
-                    {
-                        StoreId = sampleStore.Id,
-                        TransactionDate = DateTime.UtcNow.AddDays(-2),
-                        Description = "Thu tiền bán hàng đơn #ORD001",
-                        Amount = 1500000,
-                        TransactionType = "INCOME",
-                        ReferenceId = "ORD001",
-                        CreatedBy = ownerUser?.Id
-                    },
-                    new Ledger
-                    {
-                        StoreId = sampleStore.Id,
-                        TransactionDate = DateTime.UtcNow.AddDays(-1),
-                        Description = "Chi tiền nhập hàng xi măng",
-                        Amount = 5000000,
-                        TransactionType = "EXPENSE",
-                        ReferenceId = "PUR001",
-                        CreatedBy = ownerUser?.Id
-                    },
-                    new Ledger
-                    {
-                        StoreId = sampleStore.Id,
-                        TransactionDate = DateTime.UtcNow,
-                        Description = "Thu tiền bán hàng đơn #ORD002",
-                        Amount = 2300000,
-                        TransactionType = "INCOME",
-                        ReferenceId = "ORD002",
-                        CreatedBy = ownerUser?.Id
-                    }
-                };
-                await context.Ledgers.AddRangeAsync(ledgers);
-                await context.SaveChangesAsync();
+                // ...
             }
+            */
         }
     }
 }

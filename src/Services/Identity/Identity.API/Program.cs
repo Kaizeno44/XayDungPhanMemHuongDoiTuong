@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.OpenApi.Models;
 using Shared.Kernel.Extensions;
 using System.Reflection;
+using Identity.API.Middlewares; // 👈 Thêm using này
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -132,6 +133,17 @@ using (var scope = app.Services.CreateScope())
         
         Console.WriteLine("--> System: Starting Seeder...");
         await IdentityDataSeeder.SeedAsync(context, userManager, roleManager);
+
+        // Đồng bộ StoreId cho Nguyễn Văn Ba (Sử dụng mã ID thực tế đang hoạt động)
+        var baStoreId = Guid.Parse("404fb81a-d226-4408-9385-60f666e1c001");
+        var baUser = await userManager.FindByEmailAsync("owner@bizflow.com");
+        
+        if (baUser != null && baUser.StoreId != baStoreId) {
+            baUser.StoreId = baStoreId;
+            await userManager.UpdateAsync(baUser);
+            Console.WriteLine($"--> System: Reverted Nguyễn Văn Ba to StoreId: {baStoreId}");
+        }
+
         Console.WriteLine("--> System: Seeding process finished.");
     } catch (Exception ex) {
         Console.WriteLine("****************************************************");
@@ -152,7 +164,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll");
 
-// 👇 Thứ tự quan trọng: Authentication -> Authorization
+// 👇 Thứ tự quan trọng: Blacklist -> Authentication -> Authorization
+app.UseTokenBlacklist(); // 👈 Đăng ký Middleware Blacklist
 app.UseAuthentication(); 
 app.UseAuthorization();
 

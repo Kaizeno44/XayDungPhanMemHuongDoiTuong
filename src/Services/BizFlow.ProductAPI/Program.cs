@@ -121,6 +121,26 @@ using (var scope = app.Services.CreateScope())
         // Đảm bảo DB tồn tại trước khi Seed
         context.Database.EnsureCreated();
 
+        // Cập nhật StoreId và đánh số lại SKU (Nguyễn Văn Ba)
+        try {
+            var baStoreId = "404fb81a-d226-4408-9385-60f666e1c001"; // 👈 Dùng ID thực tế đang hoạt động
+            
+            // 1. Ép tất cả về StoreId của Nguyễn Văn Ba
+            await context.Database.ExecuteSqlRawAsync($"UPDATE Products SET StoreId = '{baStoreId}';");
+            await context.Database.ExecuteSqlRawAsync($"UPDATE StockImports SET StoreId = '{baStoreId}';");
+
+            // 2. Đánh số lại SKU từ 1 đến 13 cho các sản phẩm hiện có
+            var allProducts = await context.Products.OrderBy(p => p.Id).ToListAsync();
+            for (int i = 0; i < allProducts.Count; i++) {
+                allProducts[i].Sku = (i + 1).ToString();
+            }
+            await context.SaveChangesAsync();
+
+            Console.WriteLine($"--> Product Service: Migrated {allProducts.Count} products and updated SKUs to 1-{allProducts.Count}.");
+        } catch (Exception ex) {
+            Console.WriteLine("--> Product Service: Migration error: " + ex.Message);
+        }
+
         // Gọi Seeder
         await BizFlow.ProductAPI.Data.ProductDataSeeder.SeedAsync(context);
         Console.WriteLine("--> Product Service: Database check & Seeding completed.");

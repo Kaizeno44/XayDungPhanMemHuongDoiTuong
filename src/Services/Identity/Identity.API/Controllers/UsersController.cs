@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity; // 👈 Thêm using này
 using Identity.API.Data;
 using Identity.Domain.Entities; // 👈 QUAN TRỌNG: Dùng User từ Domain mới
 using Identity.API.Models;      // 👈 Để dùng CreateUserRequest (DTO)
@@ -14,17 +15,32 @@ namespace Identity.API.Controllers
     public class UsersController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly UserManager<User> _userManager;
+        private readonly RoleManager<Role> _roleManager;
 
-        public UsersController(AppDbContext context)
+        public UsersController(AppDbContext context, UserManager<User> userManager, RoleManager<Role> roleManager)
         {
             _context = context;
+            _userManager = userManager;
+            _roleManager = roleManager;
         }
 
         // 1. GET: /api/users - Lấy danh sách nhân viên
         [HttpGet]
-        public async Task<IActionResult> GetUsers()
+        public async Task<IActionResult> GetUsers([FromQuery] Guid? storeId)
         {
-            var users = await _context.Users
+            var query = _context.Users.AsQueryable();
+
+            if (storeId.HasValue)
+            {
+                query = query.Where(u => u.StoreId == storeId.Value);
+            }
+            else
+            {
+                return Ok(new List<object>());
+            }
+
+            var users = await query
                 // Join các bảng lại
                 .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
@@ -47,61 +63,93 @@ namespace Identity.API.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
         {
-            // 1. Check trùng Email
-            if (await _context.Users.AnyAsync(u => u.Email == request.Email))
+            // 1. Lấy StoreId từ Token của người tạo (Owner)
+            var storeIdClaim = User.FindFirst("StoreId")?.Value;
+            if (string.IsNullOrEmpty(storeIdClaim))
+            {
+                // Nếu không có trong token (có thể do chưa login hoặc token cũ), thử lấy từ tài khoản Nguyễn Văn Ba làm mặc định cho dev
+                storeIdClaim = "404fb81a-d226-4408-9385-60f666e1c001";
+            }
+
+            // 2. Check trùng Email
+            if (await _userManager.FindByEmailAsync(request.Email) != null)
             {
                 return BadRequest(new { message = "Email này đã được sử dụng!" });
             }
 
-            // 2. MẶC ĐỊNH LÀ EMPLOYEE 
-            var roleName = "Employee"; 
-
-            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
-            if (role == null)
+            // 3. Tạo User object
+            var user = new User
             {
-                return StatusCode(500, "Lỗi hệ thống: Chưa cấu hình Role 'Employee' trong Database.");
+                UserName = request.Email,
+                Email = request.Email,
+                FullName = request.FullName,
+                IsActive = true,
+                IsOwner = false,
+                StoreId = Guid.Parse(storeIdClaim),
+                EmailConfirmed = true
+            };
+
+            // 4. Sử dụng UserManager để tạo (Tự động Hash mật khẩu)
+            var result = await _userManager.CreateAsync(user, request.Password);
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                return BadRequest(new { message = "Lỗi tạo tài khoản: " + errors });
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                // 3. Tạo User
-                var user = new User
-                {
-                    Id = Guid.NewGuid(),
-                    Email = request.Email,
-                    FullName = request.FullName,
-                    PasswordHash = request.Password, // Lưu ý: Nên hash password thực tế
-                    IsActive = true,
-                    IsOwner = false,
-                    StoreId = null // TODO: Sau này lấy StoreId từ Token của người tạo (Owner)
-                };
+            // 5. Gán Role Employee
+            await _userManager.AddToRoleAsync(user, "Employee");
 
-                _context.Users.Add(user);
-                await _context.SaveChangesAsync();
-
-                // 4. Gán Role Employee
-                _context.UserRoles.Add(new UserRole 
-                { 
-                    UserId = user.Id, 
-                    RoleId = role.Id 
-                });
-                
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return Ok(new { message = "Tạo nhân viên bán hàng thành công!" });
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return StatusCode(500, "Lỗi: " + ex.Message);
-            }
+            return Ok(new { message = "Tạo nhân viên bán hàng thành công!" });
         }
 
         // ==========================================
         // 👇 3. NEW API: LƯU DEVICE TOKEN CHO FCM 👇
         // ==========================================
+        // 4. DELETE: /api/users/{id} - Xóa nhân viên
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteUser(Guid id)
+        {
+            var user = await _context.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+            {
+                return NotFound(new { message = "Không tìm thấy người dùng!" });
+            }
+
+            // Kiểm tra xem có phải là Owner không (Không cho phép xóa Owner qua API này)
+            if (user.IsOwner)
+            {
+                return BadRequest(new { message = "Không thể xóa tài khoản Chủ cửa hàng!" });
+            }
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // 1. Xóa các Role liên quan
+                _context.UserRoles.RemoveRange(user.UserRoles);
+
+                // 2. Xóa các Device Token liên quan
+                var devices = await _context.UserDevices.Where(d => d.UserId == id).ToListAsync();
+                _context.UserDevices.RemoveRange(devices);
+
+                // 3. Xóa User
+                _context.Users.Remove(user);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new { message = "Đã xóa nhân viên thành công!" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi khi xóa: " + ex.Message });
+            }
+        }
+
         [HttpPost("device-token")]
         public async Task<IActionResult> SaveDeviceToken([FromBody] SaveDeviceTokenRequest request)
         {

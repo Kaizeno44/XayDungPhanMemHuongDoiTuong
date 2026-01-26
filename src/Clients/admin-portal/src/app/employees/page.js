@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeftOutlined, UserAddOutlined, DeleteOutlined, TeamOutlined } from "@ant-design/icons";
 import { Button, Table, Tag, Space, Typography, Card, message, Popconfirm } from "antd";
 import api from "@/utils/api";
+import Cookies from "js-cookie";
+import { jwtDecode } from "jwt-decode";
 
 const { Title, Text } = Typography;
 
@@ -16,12 +18,22 @@ export default function EmployeesPage() {
   // Hàm tải dữ liệu
   const fetchEmployees = async () => {
     try {
-      const res = await api.get("/users");
+      const token = Cookies.get("accessToken");
+      let storeId = "";
+      try {
+        const decoded = jwtDecode(token);
+        storeId = decoded.StoreId || decoded.storeId || "";
+      } catch (e) {}
+
+      const res = await api.get(`/users?storeId=${storeId}`);
       
-      // 1. Lọc bỏ tài khoản SuperAdmin
-      // 2. Sắp xếp: Owner luôn nằm trên Employee
+      // 1. Lọc bỏ tài khoản SuperAdmin và Owner (Chủ cửa hàng)
+      // 2. Sắp xếp: Admin luôn nằm trên Employee
       const processedData = res.data
-        .filter(user => user.role?.toLowerCase() !== "superadmin")
+        .filter(user => {
+          const role = user.role?.toLowerCase();
+          return role !== "superadmin" && role !== "owner";
+        })
         .sort((a, b) => {
           const roleOrder = { "owner": 1, "admin": 2, "employee": 3 };
           const orderA = roleOrder[a.role?.toLowerCase()] || 99;

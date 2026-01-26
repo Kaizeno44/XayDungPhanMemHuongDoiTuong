@@ -6,6 +6,7 @@ import { Table, Button, Card, Space, Typography, Tag, message } from "antd";
 import { FilePdfOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import axios from "axios";
 import { saveAs } from "file-saver";
+import { jwtDecode } from "jwt-decode";
 import { numberToVietnameseWords } from "@/utils/numberToWords";
 
 const { Title, Text } = Typography;
@@ -26,7 +27,13 @@ export default function ReportsPage() {
 
   const fetchCashBook = async (token) => {
     try {
-      const response = await axios.get("http://localhost:5000/api/Accounting/cash-book", {
+      let storeId = "";
+      try {
+        const decoded = jwtDecode(token);
+        storeId = decoded.StoreId || decoded.storeId || "";
+      } catch (e) {}
+
+      const response = await axios.get(`http://localhost:5000/api/Accounting/cash-book?storeId=${storeId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setLogs(response.data);

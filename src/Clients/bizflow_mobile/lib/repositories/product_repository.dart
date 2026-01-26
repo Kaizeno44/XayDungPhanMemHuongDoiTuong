@@ -19,12 +19,14 @@ class ProductRepository {
   // =========================================================================
   Future<Result<List<Product>>> getProducts({
     String? keyword,
+    String? storeId, // 👈 Thêm StoreId
     int page = 1,
     int pageSize = 10,
   }) async {
     try {
       final response = await _productService.getProducts(
         keyword: keyword,
+        storeId: storeId,
         page: page,
         pageSize: pageSize,
       );

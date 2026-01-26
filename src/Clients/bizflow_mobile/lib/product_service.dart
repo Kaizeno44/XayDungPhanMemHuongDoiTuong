@@ -11,6 +11,7 @@ abstract class ProductService extends ChopperService {
   @Get(path: '/Products')
   Future<Response<dynamic>> getProducts({
     @Query('keyword') String? keyword,
+    @Query('storeId') String? storeId, // 👈 Thêm StoreId
     @Query('categoryId') int? categoryId,
     @Query('page') int page = 1,
     @Query('pageSize') int pageSize = 10,

@@ -117,6 +117,17 @@ using (var scope = app.Services.CreateScope())
         // context.Database.Migrate(); // Khuyến khích dùng thay cho EnsureCreated
         context.Database.EnsureCreated();
 
+        // Cập nhật StoreId cho toàn bộ dữ liệu cũ (Nguyễn Văn Ba)
+        try {
+            var baStoreId = "404fb81a-d226-4408-9385-60f666e1c001"; // 👈 Dùng ID thực tế đang hoạt động
+            await context.Database.ExecuteSqlRawAsync($"UPDATE Orders SET StoreId = '{baStoreId}';");
+            await context.Database.ExecuteSqlRawAsync($"UPDATE Customers SET StoreId = '{baStoreId}';");
+            await context.Database.ExecuteSqlRawAsync($"UPDATE DebtLogs SET StoreId = '{baStoreId}';");
+            Console.WriteLine("--> Order Service: Migrated all orders, customers, and debt logs to Nguyễn Văn Ba store.");
+        } catch (Exception ex) {
+            Console.WriteLine("--> Order Service: Migration error: " + ex.Message);
+        }
+
         await SeedDataAsync(context);
     }
     catch (Exception ex)
@@ -159,25 +170,5 @@ static async Task SeedDataAsync(OrderDbContext context)
         Console.WriteLine("--> Order Service: Đã Seed Customers!");
     }
 
-    // 2. Tạo Lịch sử Nợ & Đơn hàng mẫu
-    if (!context.DebtLogs.Any())
-    {
-        var customerId = Guid.Parse("c4608c0c-847e-468e-976e-5776d5483011");
-        var storeId = Guid.NewGuid();
 
-        context.DebtLogs.AddRange(
-            new BizFlow.OrderAPI.DbModels.DebtLog { Id = Guid.NewGuid(), CustomerId = customerId, StoreId = storeId, Amount = 1500000, Action = "Debit", Reason = "Bán hàng - Đơn ORD001", CreatedAt = DateTime.UtcNow.AddDays(-2) },
-            new BizFlow.OrderAPI.DbModels.DebtLog { Id = Guid.NewGuid(), CustomerId = customerId, StoreId = storeId, Amount = -500000, Action = "Repayment", Reason = "Khách trả tiền mặt", CreatedAt = DateTime.UtcNow.AddDays(-1) },
-            new BizFlow.OrderAPI.DbModels.DebtLog { Id = Guid.NewGuid(), CustomerId = customerId, StoreId = storeId, Amount = 2000000, Action = "Debit", Reason = "Bán hàng - Đơn ORD002", CreatedAt = DateTime.UtcNow }
-        );
-
-        context.Orders.AddRange(
-            new BizFlow.OrderAPI.DbModels.Order { Id = Guid.NewGuid(), OrderCode = "ORD001", CustomerId = customerId, StoreId = storeId, TotalAmount = 1500000, Status = "Confirmed", PaymentMethod = "Debt", OrderDate = DateTime.UtcNow.AddDays(-2) },
-            new BizFlow.OrderAPI.DbModels.Order { Id = Guid.NewGuid(), OrderCode = "ORD002", CustomerId = customerId, StoreId = storeId, TotalAmount = 2000000, Status = "Confirmed", PaymentMethod = "Debt", OrderDate = DateTime.UtcNow.AddDays(-1) },
-            new BizFlow.OrderAPI.DbModels.Order { Id = Guid.NewGuid(), OrderCode = "ORD003", CustomerId = customerId, StoreId = storeId, TotalAmount = 3500000, Status = "Confirmed", PaymentMethod = "Cash", OrderDate = DateTime.UtcNow }
-        );
-
-        await context.SaveChangesAsync();
-        Console.WriteLine("--> Order Service: Đã Seed Orders & Debts!");
-    }
 }

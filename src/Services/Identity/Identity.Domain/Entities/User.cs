@@ -14,6 +14,8 @@ namespace Identity.Domain.Entities
         public Guid? StoreId { get; set; }
         public Store? Store { get; set; }
 
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // 👈 Thêm ngày tạo
+
         public ICollection<UserRole> UserRoles { get; set; }
     }
 }

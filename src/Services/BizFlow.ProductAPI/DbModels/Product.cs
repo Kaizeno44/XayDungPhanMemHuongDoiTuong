@@ -25,6 +25,8 @@ namespace BizFlow.ProductAPI.DbModels
         
         public bool IsActive { get; set; } = true; // 👈 Mới thêm
 
+        public Guid? StoreId { get; set; } // 👈 Thêm StoreId để phân quyền theo cửa hàng
+
         // --- LIÊN KẾT ---
         public Inventory Inventory { get; set; } 
         public ICollection<ProductUnit> ProductUnits { get; set; } = new List<ProductUnit>();

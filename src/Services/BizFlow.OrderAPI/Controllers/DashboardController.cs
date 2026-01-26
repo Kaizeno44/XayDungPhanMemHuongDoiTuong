@@ -16,8 +16,10 @@ namespace BizFlow.OrderAPI.Controllers
         }
 
         [HttpGet("stats")]
-        public async Task<IActionResult> GetDashboardStats()
+        public async Task<IActionResult> GetDashboardStats([FromQuery] Guid? storeId)
         {
+            if (!storeId.HasValue) return BadRequest("StoreId is required");
+
             try
             {
                 // 1. Xác định thời gian
@@ -25,19 +27,19 @@ namespace BizFlow.OrderAPI.Controllers
                 var sevenDaysAgo = today.AddDays(-6);
 
                 // 2. Tính Doanh thu hôm nay và số đơn hàng hôm nay
-                // (Chỉ lấy đơn hàng đã hoàn thành hoặc thành công, tùy logic của bạn)
-                var todayOrdersQuery = _context.Orders.Where(o => o.OrderDate.Date == today);
+                var todayOrdersQuery = _context.Orders
+                    .Where(o => o.StoreId == storeId.Value && o.OrderDate.Date == today);
                 var todayRevenue = await todayOrdersQuery.SumAsync(o => o.TotalAmount);
                 var todayOrdersCount = await todayOrdersQuery.CountAsync();
 
-                // 3. Tính Tổng nợ khách hàng
-                // Lấy tổng cột CurrentDebt trong bảng Customers
+                // 3. Tính Tổng nợ khách hàng (Lọc theo StoreId)
                 var totalDebt = await _context.Customers
+                    .Where(c => c.StoreId == storeId.Value)
                     .SumAsync(c => c.CurrentDebt);
 
                 // 4. Chuẩn bị dữ liệu biểu đồ 7 ngày
                 var weeklyDataRaw = await _context.Orders
-                    .Where(o => o.OrderDate.Date >= sevenDaysAgo && o.OrderDate.Date <= today)
+                    .Where(o => o.StoreId == storeId.Value && o.OrderDate.Date >= sevenDaysAgo && o.OrderDate.Date <= today)
                     .GroupBy(o => o.OrderDate.Date)
                     .Select(g => new
                     {
@@ -64,7 +66,7 @@ namespace BizFlow.OrderAPI.Controllers
                 var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
                 var topProducts = await _context.OrderItems
                     .Include(oi => oi.Order)
-                    .Where(oi => oi.Order.OrderDate >= firstDayOfMonth && oi.Order.Status == "Confirmed")
+                    .Where(oi => oi.Order.StoreId == storeId.Value && oi.Order.OrderDate >= firstDayOfMonth && oi.Order.Status == "Confirmed")
                     .GroupBy(oi => oi.ProductId)
                     .Select(g => new
                     {

@@ -17,11 +17,13 @@ namespace BizFlow.OrderAPI.Controllers
 
         // 1. API Sổ Quỹ (Cash Book)
         [HttpGet("cash-book")]
-        public async Task<IActionResult> GetCashBook()
+        public async Task<IActionResult> GetCashBook([FromQuery] Guid? storeId)
         {
-            // Lấy tất cả đơn hàng đã xác nhận
+            if (!storeId.HasValue) return Ok(new List<object>());
+
+            // Lấy tất cả đơn hàng đã xác nhận của cửa hàng
             var confirmedOrders = await _context.Orders
-                .Where(o => o.Status == "Confirmed")
+                .Where(o => o.StoreId == storeId.Value && o.Status == "Confirmed")
                 .OrderByDescending(o => o.OrderDate)
                 .Select(o => new
                 {
@@ -43,12 +45,14 @@ namespace BizFlow.OrderAPI.Controllers
 
         // 2. API Thống Kê Doanh Thu
         [HttpGet("revenue-stats")]
-        public async Task<IActionResult> GetRevenueStats()
+        public async Task<IActionResult> GetRevenueStats([FromQuery] Guid? storeId)
         {
+            if (!storeId.HasValue) return Ok(new List<object>());
+
             var startDate = DateTime.UtcNow.Date.AddDays(-6);
             
             var data = await _context.Orders
-                .Where(o => o.OrderDate >= startDate) // Nên thêm điều kiện Status == Confirmed nếu cần chính xác
+                .Where(o => o.StoreId == storeId.Value && o.OrderDate >= startDate) // Nên thêm điều kiện Status == Confirmed nếu cần chính xác
                 .GroupBy(o => o.OrderDate.Date)
                 .Select(g => new {
                     Date = g.Key,

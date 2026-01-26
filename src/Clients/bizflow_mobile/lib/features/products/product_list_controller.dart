@@ -8,6 +8,7 @@ import 'package:bizflow_mobile/models/events/stock_update_event.dart';
 
 // Imports Providers & Services
 import 'package:bizflow_mobile/providers/app_providers.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart'; // 👈 Thêm import này
 import 'package:bizflow_mobile/services/signalr_service.dart';
 
 part 'product_list_controller.g.dart';
@@ -37,7 +38,13 @@ class ProductListController extends _$ProductListController {
 
   Future<List<Product>> _fetchProducts({String? keyword}) async {
     final repo = ref.read(productRepositoryProvider);
-    final result = await repo.getProducts(keyword: keyword);
+    final auth = ref.read(authNotifierProvider);
+    final storeId = auth.currentUser?.storeId;
+
+    final result = await repo.getProducts(
+      keyword: keyword,
+      storeId: storeId,
+    );
 
     return switch (result) {
       Success(data: final list) => list,

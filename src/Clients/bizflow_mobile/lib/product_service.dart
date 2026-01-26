@@ -20,11 +20,20 @@ abstract class ProductService extends ChopperService {
   @Get(path: '/Products/{id}')
   Future<Response<dynamic>> getProductById(@Path('id') int id);
 
-  // 3. Nhập kho
-  @Post(path: '/Stock/import')
+  // 3. Tạo phiếu nhập kho (Quan trọng: Đã sửa lại path cho đúng với Controller)
+  // Backend: [HttpPost] tại api/StockImports
+  @Post(path: '/StockImports')
   Future<Response<dynamic>> importStock(@Body() Map<String, dynamic> body);
 
-  // 4. 👇 KIỂM TRA TỒN KHO (Hàm này đang gây lỗi vì thiếu trong file chopper)
+  // 4. Lấy lịch sử nhập kho (Bổ sung thêm hàm này cho màn hình History)
+  // Backend: [HttpGet] tại api/StockImports?storeId=...
+  @Get(path: '/StockImports')
+  Future<Response<dynamic>> getStockHistory({
+    @Query('storeId') required String storeId,
+  });
+
+  // 5. Kiểm tra tồn kho
+  // Backend: [HttpPost("check-stock")] tại api/Products/check-stock
   @Post(path: '/Products/check-stock')
   Future<Response<dynamic>> checkStock(@Body() Map<String, dynamic> body);
 }

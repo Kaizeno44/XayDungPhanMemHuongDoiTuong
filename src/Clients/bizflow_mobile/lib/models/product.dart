@@ -1,15 +1,15 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'package:intl/intl.dart';
 
 part 'product.g.dart';
 
 // ================= 1. INVENTORY MODEL =================
-// Tách riêng để dễ dàng update qua SignalR (copyWith)
 @JsonSerializable()
 class Inventory {
   final int id;
   final int productId;
   final double quantity;
-  final String? lastUpdated;
+  final String? lastUpdated; // Giữ nguyên string để map JSON
 
   Inventory({
     required this.id,
@@ -18,7 +18,13 @@ class Inventory {
     this.lastUpdated,
   });
 
-  // CopyWith để update số lượng khi có tin từ SignalR
+  // Helper: Chuyển đổi sang DateTime để dùng trong UI
+  DateTime? get lastUpdatedDate {
+    if (lastUpdated == null) return null;
+    return DateTime.tryParse(lastUpdated!);
+  }
+
+  // CopyWith: Cập nhật dữ liệu (đặc biệt hữu ích cho SignalR)
   Inventory copyWith({
     int? id,
     int? productId,
@@ -43,12 +49,13 @@ class Inventory {
 class ProductUnit {
   final int id;
 
-  // Xử lý trường hợp server trả về id khác null
   @JsonKey(defaultValue: 0)
   final int productId;
 
   final String unitName;
   final double price;
+
+  @JsonKey(defaultValue: 1.0)
   final double conversionValue;
 
   @JsonKey(defaultValue: false)
@@ -73,16 +80,15 @@ class ProductUnit {
 class Product {
   final int id;
   final String name;
-  final String? sku; // Mã sản phẩm
+  final String? sku;
   final String? description;
   final String? imageUrl;
   final int? categoryId;
-  final String? baseUnit; // Đơn vị gốc (string) từ server
+  final String? baseUnit; // Tên đơn vị gốc từ server
 
   @JsonKey(defaultValue: [])
   final List<ProductUnit> productUnits;
 
-  // Thay vì dùng readValue, ta map thẳng vào object Inventory
   final Inventory? inventory;
 
   Product({
@@ -102,44 +108,73 @@ class Product {
   // 1. Lấy số lượng tồn kho (An toàn null)
   double get inventoryQuantity => inventory?.quantity ?? 0.0;
 
-  // 2. Lấy đơn vị tính mặc định (ưu tiên isBaseUnit -> phần tử đầu -> chuỗi baseUnit)
+  // 2. Lấy đơn vị tính mặc định (Ưu tiên BaseUnit -> Phần tử đầu -> Null)
   ProductUnit? get _defaultUnit {
     if (productUnits.isEmpty) return null;
-    return productUnits.firstWhere(
-      (u) => u.isBaseUnit,
-      orElse: () => productUnits.first,
-    );
+    try {
+      return productUnits.firstWhere((u) => u.isBaseUnit);
+    } catch (e) {
+      return productUnits.first;
+    }
   }
 
-  // 3. Các thuộc tính hiển thị
+  // 3. Các thuộc tính hiển thị nhanh
   double get price => _defaultUnit?.price ?? 0.0;
-  String get unitName => _defaultUnit?.unitName ?? baseUnit ?? '';
+  String get unitName => _defaultUnit?.unitName ?? baseUnit ?? 'N/A';
   int get unitId => _defaultUnit?.id ?? 0;
 
-  // --- COPY WITH (QUAN TRỌNG CHO RIVERPOD) ---
+  // 4. Tính tổng giá trị tồn kho của sản phẩm này (SL * Giá vốn/bán)
+  double get totalInventoryValue => inventoryQuantity * price;
+
+  // 5. Format tiền tệ nhanh (Optional)
+  String get formattedPrice {
+    final format = NumberFormat.currency(locale: 'vi_VN', symbol: '₫');
+    return format.format(price);
+  }
+
+  // --- COPY WITH NÂNG CAO ---
+  // Cho phép update trực tiếp 'quantity' mà không cần tạo object Inventory thủ công
   Product copyWith({
     int? id,
     String? name,
     String? sku,
     String? description,
     String? imageUrl,
-    Inventory? inventory,
+    int? categoryId,
+    String? baseUnit,
     List<ProductUnit>? productUnits,
-    required double inventoryQuantity,
+    Inventory? inventory,
+    // Tham số phụ: Nếu truyền vào đây sẽ tự động update vào Inventory
+    double? newQuantity,
   }) {
+    // Logic xử lý Inventory mới
+    Inventory? finalInventory = inventory ?? this.inventory;
+
+    // Nếu có yêu cầu update số lượng (từ SignalR chẳng hạn)
+    if (newQuantity != null) {
+      if (finalInventory != null) {
+        finalInventory = finalInventory.copyWith(quantity: newQuantity);
+      } else {
+        // Nếu chưa có inventory thì tạo mới
+        finalInventory = Inventory(
+          id: 0,
+          productId: id ?? this.id,
+          quantity: newQuantity,
+          lastUpdated: DateTime.now().toIso8601String(),
+        );
+      }
+    }
+
     return Product(
       id: id ?? this.id,
       name: name ?? this.name,
       sku: sku ?? this.sku,
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
-      // Các trường ít thay đổi có thể giữ nguyên từ this
-      categoryId: this.categoryId,
-      baseUnit: this.baseUnit,
-
-      // Các trường hay thay đổi
-      inventory: inventory ?? this.inventory,
+      categoryId: categoryId ?? this.categoryId,
+      baseUnit: baseUnit ?? this.baseUnit,
       productUnits: productUnits ?? this.productUnits,
+      inventory: finalInventory,
     );
   }
 

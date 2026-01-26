@@ -9,18 +9,20 @@ import {
 import axios from "axios";
 import * as signalR from "@microsoft/signalr";
 import { notification } from "antd";
+import { jwtDecode } from "jwt-decode";
 
 export default function MerchantDashboard() {
   const router = useRouter();
   
-  // 1. State cho biểu đồ (Cũ)
+  // 1. State cho biểu đồ
   const [revenueData, setRevenueData] = useState([]);
   
-  // 2. State cho số liệu tổng quan (Mới - Của B và C)
+  // 2. State cho số liệu tổng quan
   const [summaryStats, setSummaryStats] = useState({
     products: 0,
     orders: 0,
-    debt: 15000000 // Giả định khách nợ lấy từ Accounting
+    todayRevenue: 0,
+    debt: 0
   });
 
   // 3. State cho Top 5 và Cảnh báo tồn kho
@@ -33,6 +35,12 @@ export default function MerchantDashboard() {
     const token = Cookies.get("accessToken");
     if (!token) return;
 
+    let storeId = "";
+    try {
+      const decoded = jwtDecode(token);
+      storeId = decoded.StoreId || decoded.storeId || "";
+    } catch (e) {}
+
     try {
       // --- GỌI SONG SONG CÁC API ---
       const [productRes, dashboardStatsRes, lowStockRes] = await Promise.allSettled([
@@ -41,7 +49,7 @@ export default function MerchantDashboard() {
            headers: { Authorization: `Bearer ${token}` }
         }),
         // 2. API Dashboard Stats (Doanh thu, Đơn hàng, Biểu đồ, Top 5)
-        axios.get("http://localhost:5000/api/Dashboard/stats", {
+        axios.get(`http://localhost:5000/api/Dashboard/stats?storeId=${storeId}`, {
            headers: { Authorization: `Bearer ${token}` }
         }),
         // 3. API Low Stock (Cảnh báo tồn kho)
@@ -55,13 +63,46 @@ export default function MerchantDashboard() {
       // 1. Xử lý Số liệu tổng quan & Biểu đồ & Top 5
       if (dashboardStatsRes.status === 'fulfilled') {
         const data = dashboardStatsRes.value.data;
-        setRevenueData(data.weeklyRevenue || []);
-        setTopProducts(data.topProducts || []);
+        console.log("Dashboard Stats Data:", data);
+        
+        // Chuẩn hóa dữ liệu biểu đồ
+        const rawRevenue = data.weeklyRevenue || data.WeeklyRevenue || [];
+        const normalizedRevenue = rawRevenue.map(item => ({
+          dayName: item.dayName || item.DayName,
+          amount: Number(item.amount || item.Amount || 0)
+        }));
+
+        // Chuẩn hóa Top Products và lấy tên thật từ ProductAPI
+        const rawTopProducts = data.topProducts || data.TopProducts || [];
+        const normalizedTopProducts = await Promise.all(rawTopProducts.map(async (p) => {
+          const pid = p.productId || p.ProductId;
+          let name = p.productName || p.ProductName;
+          
+          // Nếu tên là mặc định (Sản phẩm #ID), thử lấy tên thật
+          if (!name || name.startsWith("Sản phẩm #")) {
+            try {
+              const pRes = await axios.get(`http://localhost:5000/api/products/${pid}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              name = pRes.data.name;
+            } catch (e) {}
+          }
+
+          return {
+            productId: pid,
+            productName: name,
+            totalSold: p.totalSold || p.TotalSold || 0,
+            totalRevenue: p.totalRevenue || p.TotalRevenue || 0
+          };
+        }));
+
+        setRevenueData(normalizedRevenue);
+        setTopProducts(normalizedTopProducts);
         setSummaryStats(prev => ({
           ...prev,
-          orders: data.todayOrdersCount || 0,
-          todayRevenue: data.todayRevenue || 0,
-          debt: data.totalDebt || 0
+          orders: data.todayOrdersCount || data.TodayOrdersCount || 0,
+          todayRevenue: data.todayRevenue || data.TodayRevenue || 0,
+          debt: data.totalDebt || data.TotalDebt || 0
         }));
       }
 
@@ -128,20 +169,20 @@ export default function MerchantDashboard() {
   // Cập nhật số liệu vào UI
   const stats = [
     { 
-      title: "Doanh thu hôm nay", 
+      title: "Doanh thu tháng này", 
       value: new Intl.NumberFormat('vi-VN').format(summaryStats.todayRevenue || 0) + " ₫", 
-      desc: "Cập nhật mới nhất", 
+      desc: "Tổng cộng trong tháng", 
       color: "text-green-600" 
     },
     { 
-      title: "Đơn hàng mới", 
-      value: summaryStats.orders, // <-- Dữ liệu thật từ C
-      desc: "Đang chờ xử lý", 
+      title: "Đơn hàng trong tháng", 
+      value: summaryStats.orders, 
+      desc: "Tổng số đơn đã tạo", 
       color: "text-blue-600" 
     },
     { 
-      title: "Tổng sản phẩm", // <-- Thêm cái này cho xịn
-      value: summaryStats.products, // <-- Dữ liệu thật từ B
+      title: "Tổng sản phẩm", 
+      value: summaryStats.products, 
       desc: "Trong kho hàng", 
       color: "text-purple-600" 
     },
@@ -151,7 +192,7 @@ export default function MerchantDashboard() {
     <div className="p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Xin chào, Chủ Cửa Hàng 👋</h1>
       
-      {/* KHỐI THỐNG KÊ (Đã cập nhật dữ liệu thật) */}
+      {/* KHỐI THỐNG KÊ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {stats.map((stat, idx) => (
           <div key={idx} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -173,7 +214,7 @@ export default function MerchantDashboard() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b text-gray-500">
-                  <th className="pb-2">Sản phẩm ID</th>
+                  <th className="pb-2">Sản phẩm</th>
                   <th className="pb-2 text-right">Số lượng</th>
                   <th className="pb-2 text-right">Doanh thu</th>
                 </tr>
@@ -182,8 +223,8 @@ export default function MerchantDashboard() {
                 {topProducts.length > 0 ? (
                   topProducts.map((p, idx) => (
                     <tr key={idx} className="border-b last:border-0">
-                      <td className="py-3 font-medium">#{p.productId}</td>
-                      <td className="py-3 text-right">{p.totalQuantity}</td>
+                      <td className="py-3 font-medium">{p.productName}</td>
+                      <td className="py-3 text-right">{p.totalSold}</td>
                       <td className="py-3 text-right text-green-600 font-semibold">
                         {new Intl.NumberFormat('vi-VN').format(p.totalRevenue)} đ
                       </td>
@@ -288,7 +329,7 @@ export default function MerchantDashboard() {
         </div>
       </div>
 
-      {/* CÁC NÚT TẮT (Giữ nguyên) */}
+      {/* CÁC NÚT TẮT */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <QuickActionCard 
           href="/reports"

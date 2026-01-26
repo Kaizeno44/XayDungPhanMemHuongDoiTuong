@@ -15,72 +15,68 @@ namespace BizFlow.OrderAPI.Controllers
             _context = context;
         }
 
+        // Thêm tham số [FromQuery] Guid storeId
         [HttpGet("stats")]
-        public async Task<IActionResult> GetDashboardStats()
+        public async Task<IActionResult> GetDashboardStats([FromQuery] Guid storeId)
         {
             try
             {
-                // 1. Xác định thời gian (Dùng UtcNow để đồng bộ với lúc tạo đơn)
-                var now = DateTime.UtcNow;
-                var today = now.Date; 
-                var tomorrow = today.AddDays(1);
+                // Kiểm tra storeId hợp lệ
+                if (storeId == Guid.Empty)
+                    return BadRequest("StoreId is required");
+
+                // 1. Xác định thời gian
+                var today = DateTime.UtcNow.Date; 
                 var sevenDaysAgo = today.AddDays(-6);
 
-                // 2. Tính Doanh thu hôm nay và số đơn hàng hôm nay
-                // Sử dụng so sánh khoảng thời gian để MySQL dễ tối ưu và tránh lỗi .Date
-                var todayOrders = await _context.Orders
-                    .Where(o => o.OrderDate >= today && o.OrderDate < tomorrow)
-                    .ToListAsync();
+                // 2. Tính Doanh thu hôm nay và số đơn hàng hôm nay (Của Store đó)
+                var todayOrdersQuery = _context.Orders
+                    .Where(o => o.StoreId == storeId && o.OrderDate.Date == today);
                 
-                var todayRevenue = todayOrders.Sum(o => o.TotalAmount);
-                var todayOrdersCount = todayOrders.Count;
+                var todayRevenue = await todayOrdersQuery.SumAsync(o => o.TotalAmount);
+                var todayOrdersCount = await todayOrdersQuery.CountAsync();
 
-                // 3. Tính Tổng nợ khách hàng
-                var totalDebt = await _context.Customers.SumAsync(c => c.CurrentDebt);
+                // 3. Tính Tổng nợ khách hàng (Của Store đó)
+                var totalDebt = await _context.Customers
+                    .Where(c => c.StoreId == storeId)
+                    .SumAsync(c => c.CurrentDebt);
 
-                // 4. Chuẩn bị dữ liệu biểu đồ theo tháng (Tất cả các ngày trong tháng hiện tại)
-                var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
-                
-                // Lấy tất cả đơn hàng từ đầu tháng đến hết ngày hôm nay
-                var monthlyOrders = await _context.Orders
-                    .Where(o => o.OrderDate >= firstDayOfMonth && o.OrderDate < tomorrow)
-                    .ToListAsync();
-
-                var monthlyDataRaw = monthlyOrders
-                    .GroupBy(o => new { o.OrderDate.Year, o.OrderDate.Month, o.OrderDate.Day })
+                // 4. Chuẩn bị dữ liệu biểu đồ 7 ngày (Của Store đó)
+                var weeklyDataRaw = await _context.Orders
+                    .Where(o => o.StoreId == storeId && o.OrderDate.Date >= sevenDaysAgo && o.OrderDate.Date <= today)
+                    .GroupBy(o => o.OrderDate.Date)
                     .Select(g => new
                     {
-                        Year = g.Key.Year,
-                        Month = g.Key.Month,
-                        Day = g.Key.Day,
+                        Date = g.Key,
                         Revenue = g.Sum(o => o.TotalAmount)
                     })
-                    .ToList();
+                    .ToListAsync();
 
-                // Chuẩn hóa dữ liệu: Hiển thị từ ngày 1 đến ngày hiện tại (hoặc hết tháng)
-                // Để biểu đồ tập trung vào những ngày đã qua và hiện tại
-                int daysToDisplay = today.Day; 
-                var monthlyChartData = Enumerable.Range(0, daysToDisplay)
+                // Chuẩn hóa dữ liệu (Điền số 0 cho ngày trống)
+                var weeklyChartData = Enumerable.Range(0, 7)
                     .Select(offset =>
                     {
-                        var date = firstDayOfMonth.AddDays(offset);
-                        var record = monthlyDataRaw.FirstOrDefault(x => x.Year == date.Year && x.Month == date.Month && x.Day == date.Day);
+                        var date = sevenDaysAgo.AddDays(offset);
+                        var record = weeklyDataRaw.FirstOrDefault(x => x.Date == date);
                         return new
                         {
-                            DayName = date.ToString("dd/MM"),
+                            DayName = GetVietnameseDayName(date.DayOfWeek),
                             Amount = record?.Revenue ?? 0
                         };
                     })
                     .ToList();
 
-                // 5. Top 5 sản phẩm bán chạy nhất tháng
+                // 5. Top 5 sản phẩm bán chạy nhất tháng (Của Store đó)
+                var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
                 var topProducts = await _context.OrderItems
                     .Include(oi => oi.Order)
-                    .Where(oi => oi.Order.OrderDate >= firstDayOfMonth)
+                    .Where(oi => oi.Order.StoreId == storeId && oi.Order.OrderDate >= firstDayOfMonth)
                     .GroupBy(oi => oi.ProductId)
                     .Select(g => new
                     {
                         ProductId = g.Key,
+                        // Tạm thời lấy tên sản phẩm qua API Product hoặc lưu cache, 
+                        // ở đây trả về ID trước hoặc join nếu có bảng Product trong OrderDb
                         TotalQuantity = g.Sum(oi => oi.Quantity),
                         TotalRevenue = g.Sum(oi => oi.Total)
                     })
@@ -93,7 +89,7 @@ namespace BizFlow.OrderAPI.Controllers
                     TodayRevenue = todayRevenue,
                     TodayOrdersCount = todayOrdersCount,
                     TotalDebt = totalDebt,
-                    WeeklyRevenue = monthlyChartData, // Giữ tên key cũ để không phải sửa Frontend nhiều
+                    WeeklyRevenue = weeklyChartData,
                     TopProducts = topProducts
                 });
             }
@@ -103,7 +99,6 @@ namespace BizFlow.OrderAPI.Controllers
             }
         }
 
-        // Hàm phụ để đổi tên thứ sang tiếng Việt cho thân thiện
         private static string GetVietnameseDayName(DayOfWeek day)
         {
             return day switch

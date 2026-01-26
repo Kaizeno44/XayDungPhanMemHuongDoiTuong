@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
-// Import các file cần thiết
 import 'package:bizflow_mobile/features/cart/cart_controller.dart';
-import '../core/config/api_config.dart';
-import '../models.dart';
-import 'screens/invoice_preview_screen.dart';
-import 'create_customer_dialog.dart';
-// import 'order_history_screen.dart'; // Không cần import nữa vì đã bỏ nút xem lịch sử
+import 'package:bizflow_mobile/core/config/api_config.dart';
+import 'package:bizflow_mobile/models.dart';
+import 'package:bizflow_mobile/screens/invoice_preview_screen.dart';
+import 'package:bizflow_mobile/screens/create_customer_dialog.dart'; // Đảm bảo import đúng
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key, required this.storeId});
@@ -34,9 +32,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _fetchCustomers();
   }
 
-  // --- 1. FETCH KHÁCH HÀNG ---
   Future<void> _fetchCustomers() async {
-    final url = Uri.parse(ApiConfig.customers);
+    final url = Uri.parse(
+      ApiConfig.customers,
+    ).replace(queryParameters: {'storeId': widget.storeId});
+
     try {
       final response = await http
           .get(url, headers: ApiConfig.headers)
@@ -63,7 +63,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
   }
 
-  // --- 2. TẠO ĐƠN HÀNG ---
   Future<void> createOrder() async {
     final cartState = ref.read(cartControllerProvider);
 
@@ -78,14 +77,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     setState(() => isLoadingOrder = true);
 
-    // Snapshot dữ liệu để hiển thị hóa đơn sau khi xóa giỏ hàng
     final itemsSnapshot = List<CartItem>.from(cartState.items);
     final totalSnapshot = cartState.totalAmount;
 
-    // Tìm khách hàng đã chọn để lấy tên hiển thị
+    // Lấy tên khách hàng để hiển thị hóa đơn
     final customerObj = customers.firstWhere(
       (c) => c.id == selectedCustomerId,
-      orElse: () => Customer(id: '', name: 'Khách lẻ', phone: '', address: ''),
+      orElse: () => Customer(
+        id: '',
+        name: 'Khách lẻ',
+        phone: '',
+        address: '',
+        currentDebt: 0,
+      ),
     );
 
     final url = Uri.parse(ApiConfig.orders);
@@ -103,7 +107,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Xóa giỏ hàng sau khi thành công
         ref.read(cartControllerProvider.notifier).clearCart();
 
         if (mounted) {
@@ -173,8 +176,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         actions: [
           OutlinedButton(
             onPressed: () {
-              Navigator.of(ctx).pop(); // Đóng dialog
-              Navigator.of(context).pop(); // Quay về Cart/Product list
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
             },
             child: const Text("Đóng"),
           ),
@@ -266,21 +269,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
                 const SizedBox(width: 8),
 
-                // Nút Thêm khách hàng mới
-                SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      backgroundColor: Colors.blue.shade50,
-                      foregroundColor: Colors.blue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
-                      side: BorderSide(color: Colors.blue.shade200),
-                    ),
+                // NÚT THÊM NHANH KHÁCH HÀNG
+                Container(
+                  width: 55,
+                  height: 55,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue.shade300),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.person_add, color: Colors.blue),
+                    tooltip: "Thêm khách mới",
                     onPressed: () async {
                       final newCustomer = await showDialog<Customer>(
                         context: context,
@@ -302,8 +302,31 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ],
             ),
 
-            // [ĐÃ XÓA NÚT XEM LỊCH SỬ TẠI ĐÂY]
-            const SizedBox(height: 24),
+            const SizedBox(height: 10),
+
+            // Nút xem lịch sử (Chỉ hiện khi đã chọn khách)
+            if (selectedCustomerId != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.history, color: Colors.blue),
+                  label: const Text("Xem lịch sử & Công nợ"),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.blue.shade50,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            OrderHistoryScreen(customerId: selectedCustomerId!),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+            const SizedBox(height: 20),
             const Divider(),
             const SizedBox(height: 16),
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
-import 'main_screen.dart'; // Import màn hình chính chứa 3 Tab
+import 'main_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +12,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController =
-      TextEditingController(); // Có thể gán giá trị mặc định để test nhanh: text: "owner@bizflow.com"
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
 
@@ -34,21 +33,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       // 3. Gọi hàm login từ Riverpod
       final success = await ref
-          .read(
-            authNotifierProvider.notifier,
-          ) // Lưu ý: thêm .notifier để gọi hàm
+          .read(authNotifierProvider.notifier)
           .login(_emailController.text.trim(), _passwordController.text);
 
       // 4. Kiểm tra kết quả và Điều hướng
       if (success && mounted) {
-        // Chuyển hướng sang MainScreen (Màn hình chứa Dashboard, Sản phẩm, Kho)
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
       }
     } catch (e) {
       if (mounted) {
-        // Hiển thị lỗi đẹp hơn
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -70,7 +65,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe trạng thái loading
     final isLoading = ref.watch(authNotifierProvider).isLoading;
 
     return Scaffold(
@@ -116,10 +110,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // --- FORM INPUT ---
+                // --- FORM INPUT: EMAIL ---
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  // [FORM FEEDBACK] Validate ngay khi người dùng nhập liệu
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   decoration: InputDecoration(
                     labelText: 'Email',
                     prefixIcon: Icon(
@@ -140,18 +136,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         width: 2,
                       ),
                     ),
+                    // Tinh chỉnh hiển thị lỗi cho đẹp hơn
+                    errorStyle: const TextStyle(height: 0.8),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Vui lòng nhập email';
+                    }
                     if (!value.contains('@')) return 'Email không hợp lệ';
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
+
+                // --- FORM INPUT: PASSWORD ---
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_isPasswordVisible,
+                  // [FORM FEEDBACK] Validate ngay khi người dùng nhập liệu
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   decoration: InputDecoration(
                     labelText: 'Mật khẩu',
                     prefixIcon: Icon(
@@ -183,12 +186,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         width: 2,
                       ),
                     ),
+                    errorStyle: const TextStyle(height: 0.8),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Vui lòng nhập mật khẩu';
-                    if (value.length < 6)
+                    }
+                    if (value.length < 6) {
                       return 'Mật khẩu phải ít nhất 6 ký tự';
+                    }
                     return null;
                   },
                 ),
@@ -198,7 +204,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {
-                      // Tính năng phát triển sau
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Tính năng đang phát triển'),

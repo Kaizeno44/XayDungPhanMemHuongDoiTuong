@@ -43,7 +43,7 @@ export default function MerchantDashboard() {
 
     try {
       // --- GỌI SONG SONG CÁC API ---
-      const [productRes, dashboardStatsRes, lowStockRes] = await Promise.allSettled([
+      const [productRes, dashboardStatsRes, lowStockRes, ordersRes] = await Promise.allSettled([
         // 1. API Sản phẩm (Tổng số lượng)
         axios.get("http://localhost:5000/api/products/count", {
            headers: { Authorization: `Bearer ${token}` }
@@ -54,6 +54,10 @@ export default function MerchantDashboard() {
         }),
         // 3. API Low Stock (Cảnh báo tồn kho)
         axios.get("http://localhost:5000/api/Products/low-stock", {
+           headers: { Authorization: `Bearer ${token}` }
+        }),
+        // 4. API Lấy toàn bộ đơn hàng để tính doanh thu tháng
+        axios.get("http://localhost:5000/api/orders", {
            headers: { Authorization: `Bearer ${token}` }
         })
       ]);
@@ -91,7 +95,7 @@ export default function MerchantDashboard() {
           return {
             productId: pid,
             productName: name,
-            totalSold: p.totalSold || p.TotalSold || 0,
+            totalSold: p.totalQuantity || p.TotalQuantity || p.totalSold || p.TotalSold || 0,
             totalRevenue: p.totalRevenue || p.TotalRevenue || 0
           };
         }));
@@ -100,10 +104,33 @@ export default function MerchantDashboard() {
         setTopProducts(normalizedTopProducts);
         setSummaryStats(prev => ({
           ...prev,
-          orders: data.todayOrdersCount || data.TodayOrdersCount || 0,
-          todayRevenue: data.todayRevenue || data.TodayRevenue || 0,
           debt: data.totalDebt || data.TotalDebt || 0
         }));
+      }
+
+      // 1.1 Xử lý Doanh thu tháng từ danh sách đơn hàng (Lọc Confirmed)
+      if (ordersRes.status === 'fulfilled') {
+        const allOrders = ordersRes.value.data || [];
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const confirmedOrdersInMonth = allOrders.filter(o => {
+          const orderDate = new Date(o.orderDate || o.OrderDate);
+          return (o.status === "Confirmed" || o.Status === "Confirmed") &&
+                 orderDate.getMonth() === currentMonth &&
+                 orderDate.getFullYear() === currentYear;
+        });
+
+        const totalRevenue = confirmedOrdersInMonth.reduce((sum, o) => sum + (o.totalAmount || o.TotalAmount || 0), 0);
+        
+        setSummaryStats(prev => ({
+          ...prev,
+          orders: confirmedOrdersInMonth.length,
+          todayRevenue: totalRevenue
+        }));
+
+        // Cập nhật lại biểu đồ nếu cần (Ở đây ta giữ nguyên biểu đồ từ API DashboardStats vì nó đã có logic theo ngày)
       }
 
       // 2. Xử lý Tổng số sản phẩm

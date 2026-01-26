@@ -349,5 +349,111 @@ namespace BizFlow.ProductAPI.Controllers
 
             return Ok(lowStockProducts);
         }
+
+        // 3.4 Cập nhật sản phẩm (UpdateProduct - PUT)
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] UpdateProductRequest request)
+        {
+            if (id != request.Id) return BadRequest(new { message = "ID không khớp" });
+
+            var product = await _context.Products
+                .Include(p => p.Inventory)
+                .Include(p => p.ProductUnits)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
+
+            // Kiểm tra trùng SKU (nếu đổi SKU)
+            if (product.Sku != request.Sku && await _context.Products.AnyAsync(p => p.Sku == request.Sku))
+                return BadRequest(new { message = "Mã SKU đã tồn tại!" });
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                product.Name = request.Name;
+                product.Sku = request.Sku;
+                product.CategoryId = request.CategoryId;
+                product.ImageUrl = request.ImageUrl;
+                product.Description = request.Description;
+
+                // Cập nhật tồn kho nếu có gửi lên
+                if (request.InitialStock.HasValue)
+                {
+                    if (product.Inventory == null)
+                    {
+                        product.Inventory = new Inventory { ProductId = id, Quantity = request.InitialStock.Value, LastUpdated = DateTime.UtcNow };
+                        _context.Inventories.Add(product.Inventory);
+                    }
+                    else
+                    {
+                        product.Inventory.Quantity = request.InitialStock.Value;
+                        product.Inventory.LastUpdated = DateTime.UtcNow;
+                    }
+                }
+
+                // Cập nhật đơn vị tính
+                if (request.Units != null)
+                {
+                    foreach (var uDto in request.Units)
+                    {
+                        if (uDto.Id.HasValue)
+                        {
+                            var unit = product.ProductUnits.FirstOrDefault(x => x.Id == uDto.Id.Value);
+                            if (unit != null)
+                            {
+                                unit.UnitName = uDto.UnitName;
+                                unit.Price = uDto.Price;
+                                unit.ConversionValue = uDto.ConversionValue;
+                                unit.IsBaseUnit = uDto.IsBaseUnit;
+                            }
+                        }
+                        else
+                        {
+                            _context.ProductUnits.Add(new ProductUnit
+                            {
+                                ProductId = id,
+                                UnitName = uDto.UnitName,
+                                Price = uDto.Price,
+                                ConversionValue = uDto.ConversionValue,
+                                IsBaseUnit = uDto.IsBaseUnit
+                            });
+                        }
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // SignalR update
+                if (product.Inventory != null)
+                    await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", product.Id, product.Inventory.Quantity);
+
+                return Ok(new { message = "Cập nhật sản phẩm thành công" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Lỗi hệ thống: " + ex.Message });
+            }
+        }
+
+        // 3.5 Xóa sản phẩm (DeleteProduct - DELETE)
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
+
+            try
+            {
+                _context.Products.Remove(product);
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "Xóa sản phẩm thành công" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Không thể xóa sản phẩm do có ràng buộc dữ liệu (đơn hàng, kho...)" });
+            }
+        }
     }
 }

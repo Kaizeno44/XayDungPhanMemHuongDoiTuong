@@ -70,7 +70,7 @@ class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
             unitName: item['unit'] ?? 'ĐVT',
             price: (item['price'] as num?)?.toDouble() ?? 0,
             quantity: quantity,
-            maxStock: 9999,
+            maxStock: 99,
           ),
         );
 
@@ -135,13 +135,27 @@ class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
   }
 
   // Hàm cập nhật số lượng từ nút +/-
+  // Hàm cập nhật số lượng từ nút +/-
   void _updateQuantity(CartItem item, int change) {
     setState(() {
       final newQty = item.quantity + change;
+      
+      // Kiểm tra cận dưới (>0)
       if (newQty > 0) {
-        item.quantity = newQty;
-        // Cập nhật text hiển thị trong ô nhập luôn
-        _qtyControllers[item.productId]?.text = newQty.toString();
+        // Kiểm tra cận trên (<= maxStock)
+        if (newQty <= item.maxStock) {
+          item.quantity = newQty;
+          _qtyControllers[item.productId]?.text = newQty.toString();
+        } else {
+          // Nếu vượt quá -> Hiện thông báo nhỏ
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("⚠️ Chỉ còn ${item.maxStock.toInt()} sản phẩm trong kho!"),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
       }
     });
   }
@@ -149,8 +163,29 @@ class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
   // Hàm xử lý khi gõ phím vào ô số lượng
   void _onTypeQuantity(CartItem item, String value) {
     final newQty = int.tryParse(value);
-    if (newQty != null && newQty > 0) {
-      item.quantity = newQty;
+    if (newQty != null) {
+      if (newQty > item.maxStock) {
+        // Nếu nhập quá tồn kho -> Gán về maxStock
+        item.quantity = item.maxStock.toInt();
+        
+        // Cập nhật lại text trong ô nhập để người dùng thấy số đã bị sửa
+        // Dùng addPostFrameCallback để tránh lỗi conflict khi đang gõ
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+            _qtyControllers[item.productId]?.text = item.quantity.toString();
+            // Di chuyển con trỏ về cuối dòng
+            _qtyControllers[item.productId]?.selection = TextSelection.fromPosition(
+              TextPosition(offset: item.quantity.toString().length),
+            );
+        });
+
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text("⚠️ Đã điều chỉnh về tối đa ${item.maxStock.toInt()}!"))
+        );
+      } else if (newQty > 0) {
+        // Nếu hợp lệ
+        item.quantity = newQty;
+      }
     }
   }
 

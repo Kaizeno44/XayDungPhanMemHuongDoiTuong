@@ -38,7 +38,7 @@ class CartItem {
   final String unitName;
   final double price;
   int quantity;
-  final double maxStock;
+  double maxStock;
 
   CartItem({
     required this.productId,

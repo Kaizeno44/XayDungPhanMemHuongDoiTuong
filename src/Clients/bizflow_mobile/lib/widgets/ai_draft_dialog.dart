@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
-import '../cart_provider.dart';
+import '../features/cart/cart_controller.dart';
+import '../providers/app_providers.dart'; // Để gọi productRepositoryProvider
+import '../core/result.dart'; // Để check kết quả Success/Failure
+import '../models/product.dart'; // Để dùng model Product
 
-class AiDraftDialog extends StatefulWidget {
+class AiDraftDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> data;
 
   const AiDraftDialog({super.key, required this.data});
 
   @override
-  State<AiDraftDialog> createState() => _AiDraftDialogState();
+  ConsumerState<AiDraftDialog> createState() => _AiDraftDialogState();
 }
 
-class _AiDraftDialogState extends State<AiDraftDialog> {
+class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   String _paymentMethod = 'Cash';
@@ -28,6 +31,11 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
   void initState() {
     super.initState();
     _initData();
+    
+    // 🔥 MỚI THÊM: Gọi hàm lấy tồn kho thật ngay sau khi init xong
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchRealStock();
+    });
   }
 
   void _initData() {
@@ -74,6 +82,37 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
     }
   }
 
+  // 🔥 MỚI THÊM: Hàm này sẽ chạy ngầm để cập nhật maxStock từ API
+  Future<void> _fetchRealStock() async {
+    // 1. Lấy repo từ Riverpod
+    final productRepo = ref.read(productRepositoryProvider);
+
+    // 2. Duyệt qua từng sản phẩm trong danh sách nháp
+    for (var item in _draftItems) {
+      // Gọi API lấy chi tiết sản phẩm (chứa thông tin inventory mới nhất)
+      final result = await productRepo.getProductById(item.productId);
+
+      if (result is Success<Product>) {
+        final product = result.data;
+        
+        // Kiểm tra mounted để tránh lỗi gọi setState khi dialog đã đóng
+        if (mounted) {
+          setState(() {
+            // Cập nhật maxStock thật
+            item.maxStock = product.inventoryQuantity;
+
+            // Logic phụ: Nếu số lượng khách đặt > tồn kho -> Tự giảm xuống bằng tồn kho
+            if (item.quantity > item.maxStock) {
+              item.quantity = item.maxStock.toInt();
+              // Cập nhật lại cả ô nhập liệu hiển thị trên UI
+              _qtyControllers[item.productId]?.text = item.quantity.toString();
+            }
+          });
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -116,19 +155,16 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
   }
 
   void _confirmOrder() {
-    final cart = Provider.of<CartProvider>(context, listen: false);
-
-    cart.setOrderInfoFromAI(
-      name: _nameController.text,
-      phone: _phoneController.text,
-      method: _paymentMethod,
-    );
+    final cartController = ref.read(cartControllerProvider.notifier);
 
     int count = 0;
     for (var item in _draftItems) {
       if (item.quantity > 0) {
-        cart.addToCart(item);
-        count++;
+        // Gọi hàm addToCart đã có sẵn trong cart_controller.dart
+        final error = cartController.addToCart(item); 
+        if (error == null) {
+          count++;
+        }
       }
     }
 
@@ -182,7 +218,7 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                initialValue: _paymentMethod,
+                value: _paymentMethod,
                 decoration: const InputDecoration(
                   labelText: "Thanh toán",
                   isDense: true,

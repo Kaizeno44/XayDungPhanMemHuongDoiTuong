@@ -1,103 +1,75 @@
-from app.services.rag_service import rag_client
+import os
 import time
+import requests
+from app.services.rag_service import rag_client
 
-# [QUAN TRỌNG] Danh sách này PHẢI GIỐNG HỆT dữ liệu bên Product Service (MySQL)
-# Hãy bảo Person B gửi cho bạn danh sách sản phẩm họ đã tạo.
-# Dưới đây là danh sách mẫu chuẩn cho Demo VLXD:
+# [CẬP NHẬT] Đổi sang port 5002 và thêm pageSize lớn để lấy hết dữ liệu
+# Lưu ý: host.docker.internal dùng để container gọi ra máy host (nơi chạy ProductAPI)
+PRODUCT_API_URL = os.getenv("PRODUCT_API_URL", "http://host.docker.internal:5002/api/Products?pageSize=1000")
 
-sample_products = [
-    # Nhóm Xi măng
-    {
-        "id": "10",  # ID trong MySQL thường bắt đầu từ 1
-        "name": "Xi măng Hà Tiên Đa Dụng", 
-        "unit": "bao", 
-        "price": 88000, 
-        "code": "XM_HT",
-        "image": "https://vatlieuxaydung.com/images/ximang-hatien.jpg" 
-    },
-    {
-        "id": "11", 
-        "name": "Xi măng Nghi Sơn PCB40", 
-        "unit": "bao", 
-        "price": 82000, 
-        "code": "XM_NS",
-        "image": "https://vatlieuxaydung.com/images/ximang-nghison.jpg"
-    },
+def get_products_from_api():
+    print(f"🔌 Đang gọi API: {PRODUCT_API_URL}...")
+    products = []
     
-    # Nhóm Cát - Đá
-    {
-        "id": "3", 
-        "name": "Cát vàng xây tô (Hạt lớn)", 
-        "unit": "khối", 
-        "price": 450000, 
-        "code": "CAT_VANG",
-        "image": ""
-    },
-    {
-        "id": "4", 
-        "name": "Đá 1x2 Xanh (Đổ bê tông)", 
-        "unit": "khối", 
-        "price": 380000, 
-        "code": "DA_12",
-        "image": ""
-    },
-    
-    # Nhóm Sắt Thép
-    {
-        "id": "5", 
-        "name": "Thép cuộn Pomina Ø6", 
-        "unit": "kg", 
-        "price": 18500, 
-        "code": "THEP_POMINA",
-        "image": ""
-    },
-    {
-        "id": "6", 
-        "name": "Thép thanh vằn Hòa Phát CB300", 
-        "unit": "cây", 
-        "price": 115000, 
-        "code": "THEP_HP",
-        "image": ""
-    },
+    try:
+        response = requests.get(PRODUCT_API_URL, timeout=10)
+        
+        if response.status_code == 200:
+            json_response = response.json()
+            
+            # [QUAN TRỌNG] Xử lý phân trang
+            # API của bạn trả về: { "totalItems": 10, "data": [...] }
+            # Nên cần lấy key "data" (hoặc "Data" tùy vào config JSON của C#)
+            data_list = json_response.get("data", json_response.get("Data", []))
+            
+            if not isinstance(data_list, list):
+                print(f"⚠️ Cấu trúc JSON không đúng mong đợi: {json_response.keys()}")
+                return []
 
-    # Nhóm Gạch
-    {
-        "id": "7", 
-        "name": "Gạch ống 4 lỗ Tuynel", 
-        "unit": "viên", 
-        "price": 1300, 
-        "code": "GACH_ONG",
-        "image": ""
-    },
+            for item in data_list:
+                # Tìm đơn vị tính gốc (IsBaseUnit = true)
+                base_unit = None
+                if "productUnits" in item and item["productUnits"]:
+                    # Lấy unit có isBaseUnit = true, nếu không có thì lấy cái đầu tiên
+                    base_unit = next((u for u in item["productUnits"] if u.get("isBaseUnit")), item["productUnits"][0])
+                
+                price = base_unit["price"] if base_unit else 0
+                unit_name = base_unit["unitName"] if base_unit else "cái"
+                
+                # Map dữ liệu sang chuẩn Vector DB
+                products.append({
+                    "id": str(item["id"]),
+                    "name": item["name"],
+                    "unit": unit_name,
+                    "price": float(price),
+                    "code": item["sku"], 
+                    "image": item.get("imageUrl", "")
+                })
+            
+            print(f"✅ Đã lấy thành công {len(products)} sản phẩm từ API.")
+        else:
+            print(f"❌ Lỗi API: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        print(f"❌ Không thể kết nối đến Product API: {e}")
+        print("💡 Gợi ý: Hãy chắc chắn ProductAPI đang chạy ở port 5002.")
 
-    {
-        "id": "8", 
-        "name": "Tôn lạnh mạ màu Hoa Sen", 
-        "unit": "tấm", 
-        "price": 185000, 
-        "code": "TON_LANH",
-        "image": ""
-    },
-
-    {
-        "id": "14", 
-        "name": "Tôn lạnh mạ màu Hoa Hòe", 
-        "unit": "tấm", 
-        "price": 190000, 
-        "code": "TON_LANH2",
-        "image": ""
-    }
-]
+    return products
 
 def run_seed():
-    print("⏳ Đang đợi ChromaDB khởi động...")
-    time.sleep(3) 
+    print("⏳ Đang đợi dịch vụ khởi động (5s)...")
+    time.sleep(5) 
     
-    print(f"🚀 Đang nạp {len(sample_products)} sản phẩm chuẩn vào Vector DB...")
-    rag_client.add_products(sample_products)
+    api_products = get_products_from_api()
     
-    print("✅ Đồng bộ dữ liệu hoàn tất!")
-    print("👉 AI Service đã sẵn sàng phục vụ Mobile App.")
+    if not api_products:
+        print("⚠️ Không có dữ liệu để nạp. Bỏ qua.")
+        return
+
+    print(f"🚀 Đang nạp {len(api_products)} sản phẩm vào Vector DB...")
+    rag_client.add_products(api_products)
+    
+    print("✅ Đồng bộ dữ liệu API -> ChromaDB hoàn tất!")
 
 if __name__ == "__main__":
     run_seed()

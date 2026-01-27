@@ -41,6 +41,10 @@ class ProductListController extends _$ProductListController {
     final auth = ref.read(authNotifierProvider);
     final storeId = auth.currentUser?.storeId;
 
+    print("DEBUG: ProductListController._fetchProducts");
+    print("   - StoreId from Auth: '$storeId'");
+    print("   - Keyword: '$keyword'");
+
     final result = await repo.getProducts(
       keyword: keyword,
       storeId: storeId,

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import Cookies from "js-cookie";
 import Link from "next/link";
-import { Search, Lock, Unlock, Plus } from "lucide-react";
+import { Search, Lock, Unlock, Plus, Trash2 } from "lucide-react";
 
 export default function OwnerManagementPage() {
   const [owners, setOwners] = useState([]);
@@ -47,6 +47,21 @@ export default function OwnerManagementPage() {
     }
   };
 
+  // 3. Xử lý Xóa chủ hộ
+  const handleDelete = async (id) => {
+    if(!confirm("CẢNH BÁO: Xóa chủ hộ sẽ xóa toàn bộ dữ liệu cửa hàng liên quan. Bạn có chắc chắn không?")) return;
+    try {
+        const token = Cookies.get("accessToken");
+        await axios.delete(`http://localhost:5000/api/admin/owners/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        fetchOwners();
+        alert("Đã xóa chủ hộ thành công!");
+    } catch (error) {
+        alert("Lỗi khi xóa chủ hộ: " + (error.response?.data || error.message));
+    }
+  };
+
   const filteredOwners = owners.filter(u => 
     u.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -78,6 +93,7 @@ export default function OwnerManagementPage() {
             <th className="p-4 rounded-tl-lg">Họ tên</th>
             <th className="p-4">Email</th>
             <th className="p-4">Cửa hàng</th>
+            <th className="p-4">Gói dịch vụ</th>
             <th className="p-4 text-center">Trạng thái</th>
             <th className="p-4 text-center rounded-tr-lg">Hành động</th>
           </tr>
@@ -93,6 +109,11 @@ export default function OwnerManagementPage() {
                 <td className="p-4 font-medium">{owner.fullName}</td>
                 <td className="p-4 text-gray-500">{owner.email}</td>
                 <td className="p-4 text-blue-600 font-semibold">{owner.storeName}</td>
+                <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${owner.planName?.includes('Pro') ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>
+                        {owner.planName}
+                    </span>
+                </td>
                 <td className="p-4 text-center">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                     owner.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -101,13 +122,22 @@ export default function OwnerManagementPage() {
                   </span>
                 </td>
                 <td className="p-4 text-center">
-                  <button 
-                    onClick={() => toggleStatus(owner.id, owner.status)}
-                    className={`p-2 rounded-full hover:bg-gray-200 transition ${owner.status === 'Active' ? 'text-red-500' : 'text-green-500'}`}
-                    title="Đổi trạng thái"
-                  >
-                    {owner.status === 'Active' ? <Lock size={18} /> : <Unlock size={18} />}
-                  </button>
+                  <div className="flex justify-center gap-2">
+                    <button 
+                        onClick={() => toggleStatus(owner.id, owner.status)}
+                        className={`p-2 rounded-full hover:bg-gray-200 transition ${owner.status === 'Active' ? 'text-red-500' : 'text-green-500'}`}
+                        title="Đổi trạng thái"
+                    >
+                        {owner.status === 'Active' ? <Lock size={18} /> : <Unlock size={18} />}
+                    </button>
+                    <button 
+                        onClick={() => handleDelete(owner.id)}
+                        className="p-2 rounded-full hover:bg-red-100 text-red-600 transition"
+                        title="Xóa chủ hộ"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))

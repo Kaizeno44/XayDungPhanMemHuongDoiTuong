@@ -386,6 +386,13 @@ export default function MerchantDashboard() {
           title="Đơn hàng"
           desc="Lịch sử bán hàng"
         />
+        <QuickActionCard 
+          href="/merchant/feedback"
+          color="purple"
+          icon="💬"
+          title="Gửi Phản hồi"
+          desc="Góp ý cho hệ thống"
+        />
       </div>
     </div>
   );

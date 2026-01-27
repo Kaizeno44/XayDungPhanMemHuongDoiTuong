@@ -73,10 +73,12 @@ namespace BizFlow.OrderAPI.Controllers
 
         // 👇 3. QUAN TRỌNG: API Lịch Sử Nợ (Bạn đang thiếu hàm này)
         [HttpGet("debt-history/{customerId}")]
-        public async Task<IActionResult> GetDebtHistory(Guid customerId)
+        public async Task<IActionResult> GetDebtHistory(Guid customerId, [FromQuery] Guid? storeId)
         {
+            if (!storeId.HasValue) return Ok(new List<object>());
+
             var logs = await _context.DebtLogs
-                .Where(d => d.CustomerId == customerId)
+                .Where(d => d.StoreId == storeId.Value && d.CustomerId == customerId)
                 .OrderByDescending(d => d.CreatedAt) // Mới nhất lên đầu
                 .Select(d => new 
                 {

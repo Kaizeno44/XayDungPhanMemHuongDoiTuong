@@ -22,9 +22,12 @@ namespace BizFlow.OrderAPI.Controllers
         // 👉 API NÀY ĐỂ SỬA LỖI 404 BÊN FLUTTER
         // ==========================================
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<CustomerDto>>> GetCustomers()
+        public async Task<ActionResult<IEnumerable<CustomerDto>>> GetCustomers([FromQuery] Guid? storeId)
         {
+            if (!storeId.HasValue) return Ok(new List<CustomerDto>());
+
             var customers = await _context.Customers
+                .Where(c => c.StoreId == storeId.Value)
                 .OrderBy(c => c.FullName) // Sắp xếp tên A-Z cho đẹp
                 .Select(c => new CustomerDto // Sử dụng CustomerDto rõ ràng
                 {

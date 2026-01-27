@@ -5,11 +5,10 @@ import 'package:intl/intl.dart';
 import 'features/cart/cart_controller.dart';
 import 'models.dart';
 import 'checkout_screen.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart'; // 👈 Thêm import này
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
-
-  static const String currentStoreId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
   void _showQuantityDialog(BuildContext context, WidgetRef ref, CartItem item) {
     final controller = TextEditingController(text: item.quantity.toString());
@@ -98,7 +97,7 @@ class CartScreen extends ConsumerWidget {
                     },
                   ),
                 ),
-                _buildFooter(context, totalAmount, currencyFormat, colorScheme),
+                _buildFooter(context, ref, totalAmount, currencyFormat, colorScheme),
               ],
             ),
     );
@@ -277,6 +276,7 @@ class CartScreen extends ConsumerWidget {
 
   Widget _buildFooter(
     BuildContext context,
+    WidgetRef ref, // 👈 Thêm tham số ref
     double totalAmount,
     NumberFormat fmt,
     ColorScheme colorScheme, // [MỚI] Nhận colorScheme
@@ -323,11 +323,22 @@ class CartScreen extends ConsumerWidget {
               height: 50,
               child: ElevatedButton(
                 onPressed: () {
+                  // 1. Lấy StoreId từ AuthProvider
+                  final authState = ref.read(authNotifierProvider);
+                  final storeId = authState.currentUser?.storeId ?? "";
+
+                  if (storeId.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Lỗi: Không tìm thấy mã cửa hàng. Vui lòng đăng nhập lại.")),
+                    );
+                    return;
+                  }
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const CheckoutScreen(
-                        storeId: CartScreen.currentStoreId,
+                      builder: (_) => CheckoutScreen(
+                        storeId: storeId,
                       ),
                     ),
                   );

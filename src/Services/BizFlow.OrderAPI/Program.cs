@@ -117,16 +117,6 @@ using (var scope = app.Services.CreateScope())
         // context.Database.Migrate(); // Khuyến khích dùng thay cho EnsureCreated
         context.Database.EnsureCreated();
 
-        // Cập nhật StoreId cho toàn bộ dữ liệu cũ (Nguyễn Văn Ba)
-        try {
-            var baStoreId = "404fb81a-d226-4408-9385-60f666e1c001"; // 👈 Dùng ID thực tế đang hoạt động
-            await context.Database.ExecuteSqlRawAsync($"UPDATE Orders SET StoreId = '{baStoreId}';");
-            await context.Database.ExecuteSqlRawAsync($"UPDATE Customers SET StoreId = '{baStoreId}';");
-            await context.Database.ExecuteSqlRawAsync($"UPDATE DebtLogs SET StoreId = '{baStoreId}';");
-            Console.WriteLine("--> Order Service: Migrated all orders, customers, and debt logs to Nguyễn Văn Ba store.");
-        } catch (Exception ex) {
-            Console.WriteLine("--> Order Service: Migration error: " + ex.Message);
-        }
 
         await SeedDataAsync(context);
     }

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 // Nếu bạn chưa cài icon, có thể dùng text hoặc cài thư viện lucide-react
-import { LayoutDashboard, ShoppingBag, ClipboardList, LogOut, Settings, User } from "lucide-react"; 
+import { LayoutDashboard, ShoppingBag, ClipboardList, LogOut, Settings, User, MessageSquare, Users } from "lucide-react"; 
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -13,6 +13,8 @@ export default function Sidebar() {
     { name: "Tổng quan", href: "/merchant/dashboard", icon: LayoutDashboard },
     { name: "Sản phẩm", href: "/merchant/products", icon: ShoppingBag },
     { name: "Đơn hàng", href: "/merchant/orders", icon: ClipboardList },
+    { name: "Nhân viên", href: "/employees", icon: Users },
+    { name: "Phản hồi", href: "/merchant/feedback", icon: MessageSquare },
   ];
 
   const handleLogout = () => {

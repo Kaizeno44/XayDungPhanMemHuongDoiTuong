@@ -128,6 +128,26 @@ using (var scope = app.Services.CreateScope())
         await context.Database.MigrateAsync(); 
         Console.WriteLine("--> System: Migrations completed.");
 
+        // --- TỰ ĐỘNG TẠO BẢNG FEEDBACKS (VÌ THIẾU MIGRATION) ---
+        try {
+            var createTableSql = @"
+                CREATE TABLE IF NOT EXISTS ""Feedbacks"" (
+                    ""Id"" UUID PRIMARY KEY,
+                    ""Title"" TEXT NOT NULL,
+                    ""Content"" TEXT NOT NULL,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL,
+                    ""IsResolved"" BOOLEAN NOT NULL,
+                    ""UserId"" UUID NOT NULL,
+                    ""StoreId"" UUID NULL,
+                    CONSTRAINT ""FK_Feedbacks_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""AspNetUsers"" (""Id"") ON DELETE CASCADE,
+                    CONSTRAINT ""FK_Feedbacks_Stores_StoreId"" FOREIGN KEY (""StoreId"") REFERENCES ""Stores"" (""Id"") ON DELETE SET NULL
+                );";
+            await context.Database.ExecuteSqlRawAsync(createTableSql);
+            Console.WriteLine("--> System: Feedbacks table checked/created.");
+        } catch (Exception ex) {
+            Console.WriteLine("--> System: Error creating Feedbacks table: " + ex.Message);
+        }
+
         var userManager = services.GetRequiredService<UserManager<User>>();
         var roleManager = services.GetRequiredService<RoleManager<Role>>();
         
@@ -164,9 +184,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll");
 
-// 👇 Thứ tự quan trọng: Blacklist -> Authentication -> Authorization
-app.UseTokenBlacklist(); // 👈 Đăng ký Middleware Blacklist
+// 👇 Thứ tự quan trọng: Authentication -> Blacklist -> Authorization
 app.UseAuthentication(); 
+app.UseTokenBlacklist(); // 👈 Đăng ký Middleware Blacklist (Sau Auth để có User Role)
 app.UseAuthorization();
 
 app.MapControllers();

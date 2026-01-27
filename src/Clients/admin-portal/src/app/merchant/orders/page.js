@@ -27,8 +27,16 @@ export default function OrdersPage() {
       let storeId = "";
       try {
         const decoded = jwtDecode(token);
+        console.log("Decoded Token:", decoded);
         storeId = decoded.StoreId || decoded.storeId || "";
-      } catch (e) {}
+      } catch (e) {
+        console.error("JWT Decode Error:", e);
+      }
+
+      if (!storeId) {
+        console.warn("Warning: StoreId is missing from token!");
+        message.warning("Phiên làm việc hết hạn hoặc thiếu thông tin cửa hàng. Vui lòng đăng nhập lại.");
+      }
 
       const response = await axios.get(`http://localhost:5000/api/orders${storeId ? `?storeId=${storeId}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -88,8 +96,12 @@ export default function OrdersPage() {
     setConfirmLoading(id);
     try {
       const token = Cookies.get("accessToken");
-      await axios.put(`http://localhost:5000/api/orders/${id}/status?status=Confirmed`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
+      // SỬA: Gửi status trong Body thay vì Query String
+      await axios.put(`http://localhost:5000/api/orders/${id}/status`, "Confirmed", {
+        headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+        }
       });
       message.success("Đã xác nhận đơn hàng!");
       fetchOrders();

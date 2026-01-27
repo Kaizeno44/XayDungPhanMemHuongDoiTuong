@@ -26,6 +26,7 @@ namespace Identity.API.Data
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Ledger> Ledgers { get; set; }
+        public DbSet<Feedback> Feedbacks { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -65,6 +66,19 @@ namespace Identity.API.Data
                 .HasOne(l => l.Creator)
                 .WithMany()
                 .HasForeignKey(l => l.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // --- CẤU HÌNH FEEDBACK ---
+            builder.Entity<Feedback>()
+                .HasOne(f => f.User)
+                .WithMany()
+                .HasForeignKey(f => f.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<Feedback>()
+                .HasOne(f => f.Store)
+                .WithMany()
+                .HasForeignKey(f => f.StoreId)
                 .OnDelete(DeleteBehavior.SetNull);
 
             // --- SEED DATA SubscriptionPlan ---

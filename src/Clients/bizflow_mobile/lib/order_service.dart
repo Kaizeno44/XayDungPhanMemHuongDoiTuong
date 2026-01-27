@@ -138,9 +138,12 @@ class OrderService {
   }
 
   // [ĐÃ SỬA] 4. Lấy lịch sử ghi nợ (Debt History)
-  Future<List<DebtLog>> getDebtHistory(String customerId) async {
+  Future<List<DebtLog>> getDebtHistory(String customerId,
+      {required String storeId}) async {
     // Sửa lỗi: Sử dụng hàm helper từ ApiConfig thay vì gọi baseUrl
-    final uri = Uri.parse(ApiConfig.debtHistory(customerId));
+    final uri = Uri.parse(
+      '${ApiConfig.debtHistory(customerId)}?storeId=$storeId',
+    );
 
     try {
       final headers = await _getHeaders();
@@ -161,9 +164,12 @@ class OrderService {
   }
 
   // [ĐÃ SỬA] 5. Lấy lịch sử đơn hàng của khách (Order History)
-  Future<List<Order>> getOrdersByCustomer(String customerId) async {
+  Future<List<Order>> getOrdersByCustomer(String customerId,
+      {required String storeId}) async {
     // Sửa lỗi: Sử dụng hàm helper từ ApiConfig thay vì gọi baseUrl
-    final uri = Uri.parse(ApiConfig.ordersByCustomer(customerId));
+    final uri = Uri.parse(
+      '${ApiConfig.ordersByCustomer(customerId)}?storeId=$storeId',
+    );
 
     try {
       final headers = await _getHeaders();

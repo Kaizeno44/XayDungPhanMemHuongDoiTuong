@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore; // 👈 Thêm using này
 using Identity.Domain.Entities;
+using Identity.API.Data; // 👈 Thêm using này
 using Microsoft.AspNetCore.Identity; // 👈 Quan trọng: Để dùng UserManager
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -13,13 +15,14 @@ namespace Identity.API.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        // 👇 Thay _context bằng _userManager (Trợ lý đắc lực của Identity)
+        private readonly AppDbContext _context; // 👈 Thêm lại context
         private readonly UserManager<User> _userManager;
         private readonly IConfiguration _configuration;
         private readonly IDistributedCache _cache; // 👈 Inject Redis Cache
 
-        public AuthController(UserManager<User> userManager, IConfiguration configuration, IDistributedCache cache)
+        public AuthController(AppDbContext context, UserManager<User> userManager, IConfiguration configuration, IDistributedCache cache)
         {
+            _context = context;
             _userManager = userManager;
             _configuration = configuration;
             _cache = cache;
@@ -47,8 +50,15 @@ namespace Identity.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
+            // 0. Kiểm tra chế độ bảo trì
+            var maintenance = await _cache.GetStringAsync("system_maintenance");
+            bool isMaintenance = maintenance == "true";
+
             // 1. Tìm user
-            var user = await _userManager.FindByEmailAsync(request.Email);
+            var user = await _context.Users
+                .Include(u => u.Store)
+                    .ThenInclude(s => s.SubscriptionPlan)
+                .FirstOrDefaultAsync(u => u.Email == request.Email);
             if (user == null)
             {
                 return Unauthorized("Email này không tồn tại trong hệ thống.");
@@ -71,6 +81,16 @@ namespace Identity.API.Controllers
                 return Unauthorized("Mật khẩu không chính xác.");
             }
 
+            // 2.1 Lấy Role để check bảo trì
+            var roles = await _userManager.GetRolesAsync(user);
+            var roleName = roles.FirstOrDefault() ?? "Employee";
+
+            // 2.2 Nếu đang bảo trì, chỉ cho phép SuperAdmin
+            if (isMaintenance && roleName != "SuperAdmin")
+            {
+                return StatusCode(503, new { message = "Hệ thống đang bảo trì để nâng cấp. Vui lòng quay lại sau!" });
+            }
+
             // 3. Kiểm tra khóa tài khoản
             if (!user.IsActive)
             {
@@ -79,12 +99,12 @@ namespace Identity.API.Controllers
 
             try
             {
-                // 4. Lấy Role (Identity tự lấy từ bảng AspNetUserRoles)
-                var roles = await _userManager.GetRolesAsync(user);
-                var roleName = roles.FirstOrDefault() ?? "Employee";
+                // 4. Role đã lấy ở trên
+                // 5. Lấy quyền AI từ gói cước
+                bool allowAI = user.Store?.SubscriptionPlan?.AllowAI ?? false;
 
-                // 5. Tạo Token (Truyền role vào để đóng dấu)
-                var token = GenerateJwtToken(user, roleName);
+                // 6. Tạo Token (Truyền role vào để đóng dấu)
+                var token = GenerateJwtToken(user, roleName, allowAI);
 
                 // 6. Trả về kết quả
                 return Ok(new
@@ -96,7 +116,8 @@ namespace Identity.API.Controllers
                         FullName = user.FullName,
                         Role = roleName,
                         StoreId = user.StoreId,
-                        IsOwner = user.IsOwner
+                        IsOwner = user.IsOwner,
+                        AllowAI = allowAI.ToString() // 👈 Thêm quyền AI vào đây
                     }
                 });
             }
@@ -107,7 +128,7 @@ namespace Identity.API.Controllers
         }
 
         // --- HÀM TẠO TOKEN ---
-        private string GenerateJwtToken(User user, string roleName)
+        private string GenerateJwtToken(User user, string roleName, bool allowAI)
         {
             var jwtSettings = _configuration.GetSection("JwtSettings");
             var secretKey = jwtSettings["SecretKey"];
@@ -136,6 +157,9 @@ namespace Identity.API.Controllers
             {
                 claims.Add(new Claim("StoreId", user.StoreId.Value.ToString()));
             }
+
+            // Thêm quyền AI
+            claims.Add(new Claim("AllowAI", allowAI.ToString()));
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {

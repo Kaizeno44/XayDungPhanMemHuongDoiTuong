@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity; // <--- Nhớ thêm thư viện này
 using System.Linq;
 using System.Threading.Tasks;
 using Identity.API.Models;
+using Microsoft.Extensions.Caching.Distributed; // 👈 Thêm using cho Redis
 namespace Identity.API.Controllers
 {
     [Route("api/admin")]
@@ -14,14 +15,14 @@ namespace Identity.API.Controllers
     public class AdminController : ControllerBase
     {
         private readonly AppDbContext _context;
-        // Thêm UserManager để quản lý User
-        private readonly UserManager<User> _userManager; 
+        private readonly UserManager<User> _userManager;
+        private readonly IDistributedCache _cache; // 👈 Inject Redis
 
-        // Inject thêm UserManager vào Constructor
-        public AdminController(AppDbContext context, UserManager<User> userManager)
+        public AdminController(AppDbContext context, UserManager<User> userManager, IDistributedCache cache)
         {
             _context = context;
             _userManager = userManager;
+            _cache = cache;
         }
 
         // ==========================================
@@ -102,12 +103,21 @@ namespace Identity.API.Controllers
                     if (store != null) storeName = store.StoreName;
                 }
 
+                // Lấy thông tin gói cước
+                var planName = "Chưa đăng ký";
+                if (user.StoreId != null)
+                {
+                    var store = await _context.Stores.Include(s => s.SubscriptionPlan).FirstOrDefaultAsync(s => s.Id == user.StoreId);
+                    if (store?.SubscriptionPlan != null) planName = store.SubscriptionPlan.Name;
+                }
+
                 result.Add(new
                 {
                     id = user.Id,
                     fullName = user.FullName,
                     email = user.Email,
                     storeName = storeName, // Hiển thị: "Vật Liệu Xây Dựng Ba Tèo"
+                    planName = planName,   // Hiển thị: "Gói Doanh Nghiệp (Pro)"
                     status = user.IsActive ? "Active" : "Locked"
                 });
             }
@@ -162,6 +172,62 @@ namespace Identity.API.Controllers
 
             await _context.SaveChangesAsync();
             return Ok(new { message = "Cập nhật gói cước thành công!" });
+        }
+
+        // ==========================================
+        // API: Xóa chủ hộ và cửa hàng
+        // ==========================================
+        [HttpDelete("owners/{id}")]
+        public async Task<IActionResult> DeleteOwner(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound("Không tìm thấy chủ hộ");
+
+            if (!user.IsOwner) return BadRequest("Đây không phải là tài khoản chủ hộ");
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // 1. Xóa Store (Cascade sẽ xóa các liên kết khác nếu có)
+                if (user.StoreId.HasValue)
+                {
+                    var store = await _context.Stores.FindAsync(user.StoreId.Value);
+                    if (store != null) _context.Stores.Remove(store);
+                }
+
+                // 2. Xóa User
+                await _userManager.DeleteAsync(user);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new { message = "Đã xóa chủ hộ và cửa hàng thành công!" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, "Lỗi khi xóa: " + ex.Message);
+            }
+        }
+
+        // ==========================================
+        // API: Lấy trạng thái bảo trì
+        // ==========================================
+        [HttpGet("maintenance")]
+        public async Task<IActionResult> GetMaintenanceStatus()
+        {
+            var status = await _cache.GetStringAsync("system_maintenance");
+            return Ok(new { isMaintenance = status == "true" });
+        }
+
+        // ==========================================
+        // API: Cập nhật trạng thái bảo trì
+        // ==========================================
+        [HttpPost("maintenance")]
+        public async Task<IActionResult> SetMaintenanceStatus([FromBody] bool isMaintenance)
+        {
+            await _cache.SetStringAsync("system_maintenance", isMaintenance.ToString().ToLower());
+            return Ok(new { message = isMaintenance ? "Đã bật chế độ bảo trì" : "Đã tắt chế độ bảo trì" });
         }
 
         // ==========================================

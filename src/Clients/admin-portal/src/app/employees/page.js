@@ -22,9 +22,13 @@ export default function EmployeesPage() {
       let storeId = "";
       try {
         const decoded = jwtDecode(token);
+        console.log("Decoded Token (Employees):", decoded);
         storeId = decoded.StoreId || decoded.storeId || "";
-      } catch (e) {}
+      } catch (e) {
+        console.error("JWT Decode Error:", e);
+      }
 
+      console.log("Fetching employees for StoreId:", storeId);
       const res = await api.get(`/users?storeId=${storeId}`);
       
       // 1. Lọc bỏ tài khoản SuperAdmin và Owner (Chủ cửa hàng)

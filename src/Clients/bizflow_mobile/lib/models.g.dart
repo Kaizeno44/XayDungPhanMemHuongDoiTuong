@@ -149,6 +149,7 @@ User _$UserFromJson(Map<String, dynamic> json) => User(
       fullName: User._readCaseInsensitive(json, 'fullName') as String,
       role: User._readCaseInsensitive(json, 'role') as String,
       storeId: User._readCaseInsensitive(json, 'storeId') as String,
+      allowAI: User._readCaseInsensitive(json, 'allowAI') as String? ?? 'False',
     );
 
 Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
@@ -157,6 +158,7 @@ Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
       'fullName': instance.fullName,
       'role': instance.role,
       'storeId': instance.storeId,
+      'allowAI': instance.allowAI,
     };
 
 AuthResponse _$AuthResponseFromJson(Map<String, dynamic> json) => AuthResponse(

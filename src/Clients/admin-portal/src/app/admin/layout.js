@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Users, DollarSign, Settings, LogOut, LayoutDashboard } from "lucide-react";
+import { Users, DollarSign, Settings, LogOut, LayoutDashboard, MessageSquare } from "lucide-react";
 import Cookies from "js-cookie";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -18,6 +18,7 @@ export default function AdminLayout({ children }) {
     { name: "Tổng quan", href: "/admin/dashboard", icon: <LayoutDashboard size={20} /> },
     { name: "Quản lý Chủ hộ", href: "/admin/owners", icon: <Users size={20} /> },
     { name: "Gói Dịch Vụ", href: "/admin/subscriptions", icon: <DollarSign size={20} /> },
+    { name: "Phản hồi", href: "/admin/feedback", icon: <MessageSquare size={20} /> },
     { name: "Cấu hình", href: "/admin/settings", icon: <Settings size={20} /> },
   ];
 

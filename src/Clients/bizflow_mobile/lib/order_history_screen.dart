@@ -52,8 +52,8 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen>
 
     try {
       final results = await Future.wait([
-        _orderService.getOrdersByCustomer(widget.customerId),
-        _orderService.getDebtHistory(widget.customerId),
+        _orderService.getOrdersByCustomer(widget.customerId, storeId: storeId),
+        _orderService.getDebtHistory(widget.customerId, storeId: storeId),
         _orderService.getCustomers(storeId: storeId),
       ]);
 

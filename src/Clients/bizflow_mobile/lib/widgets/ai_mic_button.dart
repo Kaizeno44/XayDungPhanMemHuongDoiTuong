@@ -4,17 +4,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // 👈 Thêm Riverpod
+import 'package:bizflow_mobile/providers/auth_provider.dart'; // 👈 Thêm AuthProvider
 
 import 'ai_draft_dialog.dart'; // <--- Import Dialog mới
 
-class AiMicButton extends StatefulWidget {
+class AiMicButton extends ConsumerStatefulWidget { // 👈 Đổi sang ConsumerStatefulWidget
   const AiMicButton({super.key});
 
   @override
-  State<AiMicButton> createState() => _AiMicButtonState();
+  ConsumerState<AiMicButton> createState() => _AiMicButtonState();
 }
 
-class _AiMicButtonState extends State<AiMicButton> {
+class _AiMicButtonState extends ConsumerState<AiMicButton> { // 👈 Đổi sang ConsumerState
   final AudioRecorder _audioRecorder = AudioRecorder();
 
   bool _isRecording = false;
@@ -29,6 +31,13 @@ class _AiMicButtonState extends State<AiMicButton> {
 
   Future<void> _startRecording() async {
     try {
+      // 1. Kiểm tra quyền sử dụng AI từ gói cước
+      final user = ref.read(authNotifierProvider).currentUser;
+      if (user?.allowAI.toLowerCase() != 'true') {
+        _showError("Bạn cần nâng cấp gói dịch vụ để sử dụng chức năng này!");
+        return;
+      }
+
       if (!await _audioRecorder.hasPermission()) return;
 
       final dir = await getTemporaryDirectory();

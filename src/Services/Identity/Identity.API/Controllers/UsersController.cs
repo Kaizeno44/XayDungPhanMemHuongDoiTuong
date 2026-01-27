@@ -71,6 +71,25 @@ namespace Identity.API.Controllers
                 storeIdClaim = "404fb81a-d226-4408-9385-60f666e1c001";
             }
 
+            var storeId = Guid.Parse(storeIdClaim);
+
+            // 1.1 Kiểm tra giới hạn nhân viên theo gói cước
+            var store = await _context.Stores
+                .Include(s => s.SubscriptionPlan)
+                .FirstOrDefaultAsync(s => s.Id == storeId);
+
+            if (store?.SubscriptionPlan != null)
+            {
+                var currentEmployeeCount = await _context.Users
+                    .Where(u => u.StoreId == storeId && !u.IsOwner)
+                    .CountAsync();
+
+                if (currentEmployeeCount >= store.SubscriptionPlan.MaxEmployees)
+                {
+                    return BadRequest(new { message = $"Gói cước hiện tại ({store.SubscriptionPlan.Name}) chỉ cho phép tối đa {store.SubscriptionPlan.MaxEmployees} nhân viên. Vui lòng nâng cấp gói dịch vụ để thêm nhân viên!" });
+                }
+            }
+
             // 2. Check trùng Email
             if (await _userManager.FindByEmailAsync(request.Email) != null)
             {

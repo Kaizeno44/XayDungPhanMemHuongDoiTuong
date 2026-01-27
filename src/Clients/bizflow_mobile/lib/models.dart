@@ -296,12 +296,16 @@ class User {
   @JsonKey(readValue: _readCaseInsensitive)
   final String storeId;
 
+  @JsonKey(readValue: _readCaseInsensitive, defaultValue: 'False')
+  final String allowAI; // 👈 Thêm quyền AI
+
   User({
     required this.id,
     required this.email,
     required this.fullName,
     required this.role,
     required this.storeId,
+    required this.allowAI,
   });
 
   static Object? _readCaseInsensitive(Map map, String key) {

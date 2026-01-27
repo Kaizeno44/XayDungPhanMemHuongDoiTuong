@@ -172,7 +172,7 @@ namespace BizFlow.OrderAPI.Controllers
                     StoreId = request.StoreId,
                     OrderDate = DateTime.UtcNow,
                     PaymentMethod = request.PaymentMethod,
-                    Status = "Confirmed", // Đặt luôn là Confirmed nếu đã qua bước check kho (hoặc Pending tùy logic)
+                    Status = "Pending", // Đổi từ Confirmed sang Pending để chủ shop duyệt trên Web
                     OrderItems = new List<OrderItem>()
                 };
 

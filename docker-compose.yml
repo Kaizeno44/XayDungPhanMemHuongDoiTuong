@@ -68,7 +68,7 @@ services:
     environment:
       - CHROMA_HOST=bizflow_chroma
       - CHROMA_PORT=8000
-      - GEMINI_API_KEY=123 # Liên hệ person D để lấy
+      - GEMINI_API_KEY=321 # Liên hệ person D để lấy
       - PRODUCT_API_URL=http://host.docker.internal:5002/api/Products?pageSize=1000
     extra_hosts:
       - "host.docker.internal:host-gateway"

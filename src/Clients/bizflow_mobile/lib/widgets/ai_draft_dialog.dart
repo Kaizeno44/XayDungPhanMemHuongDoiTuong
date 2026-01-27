@@ -70,7 +70,7 @@ class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
             unitName: item['unit'] ?? 'ĐVT',
             price: (item['price'] as num?)?.toDouble() ?? 0,
             quantity: quantity,
-            maxStock: 99,
+            maxStock: 9999,
           ),
         );
 
@@ -84,27 +84,28 @@ class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
 
   // 🔥 MỚI THÊM: Hàm này sẽ chạy ngầm để cập nhật maxStock từ API
   Future<void> _fetchRealStock() async {
-    // 1. Lấy repo từ Riverpod
     final productRepo = ref.read(productRepositoryProvider);
 
-    // 2. Duyệt qua từng sản phẩm trong danh sách nháp
     for (var item in _draftItems) {
-      // Gọi API lấy chi tiết sản phẩm (chứa thông tin inventory mới nhất)
       final result = await productRepo.getProductById(item.productId);
 
       if (result is Success<Product>) {
         final product = result.data;
         
-        // Kiểm tra mounted để tránh lỗi gọi setState khi dialog đã đóng
         if (mounted) {
           setState(() {
-            // Cập nhật maxStock thật
+            // [FIX QUAN TRỌNG] Cập nhật lại UnitID và Giá từ dữ liệu thật
+            // Vì AI không biết ID của đơn vị tính, cần lấy từ Product gốc
+            item.unitId = product.unitId;         // <-- Thêm dòng này (đảm bảo model Product có trường unitId)
+            item.unitName = product.unitName;     // <-- Cập nhật tên đơn vị cho khớp hiển thị
+            item.price = product.price;           // <-- Cập nhật giá chuẩn từ DB (tránh AI nhận diện sai giá)
+
+            // Cập nhật tồn kho (Code cũ đã có)
             item.maxStock = product.inventoryQuantity;
 
-            // Logic phụ: Nếu số lượng khách đặt > tồn kho -> Tự giảm xuống bằng tồn kho
+            // Logic kiểm tra số lượng (Code cũ)
             if (item.quantity > item.maxStock) {
               item.quantity = item.maxStock.toInt();
-              // Cập nhật lại cả ô nhập liệu hiển thị trên UI
               _qtyControllers[item.productId]?.text = item.quantity.toString();
             }
           });

@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-// Để dùng TextInputFormatter
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'order_service.dart';
+import 'order_service.dart'; // Đảm bảo đường dẫn đúng
 
 class PayDebtScreen extends StatefulWidget {
   final String customerId;
-  final String customerName; // Mới thêm: Để hiển thị tên khách
+  final String customerName;
   final String storeId;
   final double currentDebt;
 
   const PayDebtScreen({
     super.key,
     required this.customerId,
-    required this.customerName, // Required
+    required this.customerName,
     required this.storeId,
     required this.currentDebt,
   });
@@ -23,145 +23,106 @@ class PayDebtScreen extends StatefulWidget {
 
 class _PayDebtScreenState extends State<PayDebtScreen> {
   final _amountController = TextEditingController();
-  final _noteController = TextEditingController();
+  final _noteController = TextEditingController(); // ✅ Đã thêm controller này
   final _orderService = OrderService();
   final _currencyFormat = NumberFormat("#,##0", "vi_VN");
 
   bool _isLoading = false;
-  String _formattedHelperText = "";
-
-  @override
-  void initState() {
-    super.initState();
-    // Tự động focus vào ô nhập tiền khi mở màn hình
-  }
+  String? _errorText;
 
   @override
   void dispose() {
     _amountController.dispose();
-    _noteController.dispose();
+    _noteController.dispose(); // Giờ đây an toàn để dispose
     super.dispose();
   }
 
-  // Hàm điền nhanh số tiền
-  void _quickSetAmount(double percent) {
-    double amount = widget.currentDebt * percent;
-    // Làm tròn về số nguyên
-    String text = amount.toStringAsFixed(0);
-    _amountController.text = _formatNumber(text); // Format có dấu phẩy luôn
+  /// Hàm điền toàn bộ số nợ vào ô nhập
+  void _fillFullAmount() {
+    // Format số nợ hiện tại thành chuỗi có dấu phân cách (ví dụ: 1,000,000)
+    final formattedDebt = _currencyFormat.format(widget.currentDebt);
+    _amountController.text = formattedDebt;
+    // Di chuyển con trỏ về cuối dòng
     _amountController.selection = TextSelection.fromPosition(
-      TextPosition(offset: _amountController.text.length),
-    ); // Đưa con trỏ về cuối
-    _updateHelperText();
+        TextPosition(offset: _amountController.text.length));
   }
 
-  // Hàm xử lý format số khi nhập
-  String _formatNumber(String s) {
-    if (s.isEmpty) return "";
-    s = s.replaceAll(RegExp(r'[^0-9]'), ''); // Xóa ký tự không phải số
-    if (s.isEmpty) return "";
-    final number = double.parse(s);
-    return _currencyFormat.format(number);
-  }
-
-  void _onAmountChanged(String value) {
-    // Logic format input: User nhập 100000 -> Hiển thị 100,000
-    String cleanValue = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (cleanValue.isEmpty) {
-      _amountController.text = "";
-      _updateHelperText();
-      return;
-    }
-
-    // Format và gán lại (giữ con trỏ ở cuối)
-    String formatted = _formatNumber(cleanValue);
-    if (formatted != _amountController.text) {
-      _amountController.value = TextEditingValue(
-        text: formatted,
-        selection: TextSelection.collapsed(offset: formatted.length),
-      );
-    }
-    _updateHelperText();
-  }
-
-  void _updateHelperText() {
-    setState(() {
-      String cleanValue = _amountController.text.replaceAll(
-        RegExp(r'[^0-9]'),
-        '',
-      );
-      if (cleanValue.isNotEmpty) {
-        double val = double.tryParse(cleanValue) ?? 0;
-        // Đọc số thành chữ (Optional - nếu bạn có hàm đọc số)
-        // _formattedHelperText = NumberToWords.convert(val);
-        _formattedHelperText =
-            "Bạn đang nhập: ${_currencyFormat.format(val)} đ";
-      } else {
-        _formattedHelperText = "";
-      }
-    });
+  /// Hàm parse số từ chuỗi đã format (1,000,000 -> 1000000.0)
+  double _parseCurrency(String text) {
+    if (text.isEmpty) return 0;
+    return double.tryParse(text.replaceAll('.', '').replaceAll(',', '')) ?? 0;
   }
 
   Future<void> _submitPayment() async {
+    // Ẩn bàn phím
     FocusScope.of(context).unfocus();
 
-    // Lấy giá trị thực từ chuỗi đã format (bỏ dấu chấm/phẩy)
-    String cleanValue = _amountController.text.replaceAll(
-      RegExp(r'[^0-9]'),
-      '',
-    );
-    final amount = double.tryParse(cleanValue);
+    final amountText = _amountController.text;
+    final amount = _parseCurrency(amountText);
+    final note = _noteController.text.trim();
 
-    // 1. Validate
-    if (amount == null || amount <= 0) {
-      _showSnackBar("Vui lòng nhập số tiền hợp lệ", isError: true);
+    // 1. Validate Số tiền
+    if (amount <= 0) {
+      setState(() => _errorText = "Vui lòng nhập số tiền lớn hơn 0");
       return;
     }
 
-    if (amount.round() > widget.currentDebt.round()) {
-      _showSnackBar(
-        "Số tiền trả không được lớn hơn nợ hiện tại",
-        isError: true,
-      );
+    // 2. Validate Trả thừa
+    // Cho phép sai số nhỏ (epsilon) để tránh lỗi số học floating point
+    if (amount > widget.currentDebt + 100) { 
+      setState(() => _errorText = "Số tiền trả vượt quá nợ hiện tại (${_currencyFormat.format(widget.currentDebt)})");
       return;
     }
 
-    // 2. Confirm Dialog
+    setState(() => _errorText = null); // Xóa lỗi cũ
+
+    // 3. Dialog xác nhận
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Xác nhận thanh toán"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.monetization_on, color: Colors.green),
+            SizedBox(width: 8),
+            Text("Xác nhận thu tiền"),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Khách hàng: ${widget.customerName}"),
-            const SizedBox(height: 8),
-            Text(
-              "Số tiền: ${_currencyFormat.format(amount)} đ",
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-                fontSize: 16,
+            const Text("Bạn có chắc chắn muốn thu số tiền:"),
+            const SizedBox(height: 10),
+            Center(
+              child: Text(
+                "${_currencyFormat.format(amount)} đ",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 24,
+                  color: Colors.green,
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            if (_noteController.text.isNotEmpty)
-              Text(
-                "Ghi chú: ${_noteController.text}",
-                style: const TextStyle(fontStyle: FontStyle.italic),
-              ),
+            if (note.isNotEmpty) ...[
+              const Divider(height: 20),
+              Text("Ghi chú: $note", style: const TextStyle(fontStyle: FontStyle.italic)),
+            ]
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("Hủy"),
+            child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text("Đồng ý", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text("Đồng ý Thu"),
           ),
         ],
       ),
@@ -169,20 +130,19 @@ class _PayDebtScreenState extends State<PayDebtScreen> {
 
     if (confirm != true) return;
 
-    // 3. Call API
+    // 4. Gọi API
     setState(() => _isLoading = true);
     try {
-      // Giả sử API PayDebt hỗ trợ thêm param note
       final result = await _orderService.payDebt(
         customerId: widget.customerId,
         amount: amount,
         storeId: widget.storeId,
-        // note: _noteController.text // Nếu API có hỗ trợ note
+        // note: note, // Uncomment nếu API của bạn hỗ trợ biến 'note'
       );
 
       if (mounted) {
-        _showSnackBar("✅ Thanh toán thành công!");
-        Navigator.pop(context, true); // Pop về và báo success
+        _showSnackBar("✅ ${result['message'] ?? 'Thu nợ thành công!'}");
+        Navigator.pop(context, true); // Trả về true để màn hình trước refresh lại
       }
     } catch (e) {
       if (mounted) _showSnackBar("❌ Lỗi: $e", isError: true);
@@ -203,187 +163,150 @@ class _PayDebtScreenState extends State<PayDebtScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Thanh toán công nợ"),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- HEADER INFO ---
-            Center(
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.account_circle,
-                    size: 50,
-                    color: Colors.blueGrey,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.customerName,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
+    final primaryColor = Theme.of(context).primaryColor;
 
-            // --- DEBT CARD ---
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.red.shade50, Colors.red.shade100],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    // ignore: deprecated_member_use
-                    color: Colors.red.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    "Nợ hiện tại",
-                    style: TextStyle(color: Colors.black54, fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "${_currencyFormat.format(widget.currentDebt)} đ",
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red.shade800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            // --- INPUT ---
-            const Text(
-              "Số tiền thanh toán",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountController,
-              keyboardType: TextInputType.number,
-              onChanged: _onAmountChanged, // Format realtime
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-              decoration: InputDecoration(
-                hintText: "0",
-                suffixText: "VNĐ",
-                prefixIcon: const Icon(
-                  Icons.monetization_on_outlined,
-                  color: Colors.green,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.green, width: 2),
-                ),
-                helperText: _formattedHelperText.isNotEmpty
-                    ? _formattedHelperText
-                    : null,
-                helperStyle: const TextStyle(color: Colors.blue),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // --- QUICK ACTIONS ---
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _quickSetAmount(0.5),
-                    child: const Text("Trả 50%"),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _quickSetAmount(1.0),
-                    icon: const Icon(Icons.check_circle_outline, size: 16),
-                    label: const Text("Trả hết"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade50,
-                      foregroundColor: Colors.blue,
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // --- NOTE INPUT ---
-            TextField(
-              controller: _noteController,
-              decoration: InputDecoration(
-                labelText: "Ghi chú (Tùy chọn)",
-                hintText: "VD: Chuyển khoản Vietcombank...",
-                prefixIcon: const Icon(Icons.note_alt_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 40),
-
-            // --- SUBMIT BUTTON ---
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _submitPayment,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 4,
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text(
-                        "XÁC NHẬN THANH TOÁN",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // Chạm ra ngoài ẩn phím
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: const Text("Thu nợ khách hàng"),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          centerTitle: true,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // CARD: THÔNG TIN KHÁCH VÀ NỢ
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Text(widget.customerName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Divider(height: 20),
+                      const Text("Nợ hiện tại", style: TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 5),
+                      Text(
+                        "${_currencyFormat.format(widget.currentDebt)} đ",
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red),
                       ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+
+              // INPUT: SỐ TIỀN
+              const Text("Nhập số tiền khách trả:", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _amountController,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  CurrencyInputFormatter(), // Formatter tùy chỉnh ở dưới
+                ],
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: primaryColor),
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  hintText: "0",
+                  suffixText: "đ",
+                  errorText: _errorText, // Hiển thị lỗi nếu có
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                ),
+                onChanged: (_) => setState(() => _errorText = null), // Xóa lỗi khi nhập lại
+              ),
+
+              // CHIP: TRẢ HẾT
+              if (widget.currentDebt > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12.0),
+                  child: Center(
+                    child: ActionChip(
+                      avatar: const Icon(Icons.check_circle, size: 16, color: Colors.white),
+                      label: const Text("Thu tất cả nợ cũ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      backgroundColor: Colors.orange[400],
+                      onPressed: _fillFullAmount,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 24),
+
+              // INPUT: GHI CHÚ
+              const Text("Ghi chú (tùy chọn):", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _noteController,
+                decoration: InputDecoration(
+                  hintText: "Ví dụ: Khách trả tiền mặt...",
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // BUTTON: XÁC NHẬN
+              SizedBox(
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _submitPayment,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700], // Màu xanh cho hành động 'Thu tiền'
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 4,
+                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("XÁC NHẬN THU TIỀN", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+// --- HELPER CLASS: FORMAT TIỀN KHI GÕ ---
+class CurrencyInputFormatter extends TextInputFormatter {
+  final NumberFormat _formatter = NumberFormat("#,###", "vi_VN");
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Xóa tất cả ký tự không phải số
+    String cleanText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // Parse sang số
+    double value = double.tryParse(cleanText) ?? 0;
+
+    // Format lại
+    String newText = _formatter.format(value);
+
+    return newValue.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
     );
   }
 }

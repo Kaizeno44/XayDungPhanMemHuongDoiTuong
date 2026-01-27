@@ -1,22 +1,22 @@
 namespace BizFlow.ProductAPI.DTOs
 {
-    // 1. DTO cho từng sản phẩm trong danh sách nhập
+    // Class chi tiết cho từng sản phẩm trong phiếu
     public class StockImportDetailDto
     {
         public int ProductId { get; set; }
         public int UnitId { get; set; }
         public double Quantity { get; set; }
-        public double UnitCost { get; set; } // Mobile gửi là unitCost, map sang CostPrice
+        public double UnitCost { get; set; } // Mobile gửi key là "unitCost"
     }
 
-    // 2. DTO bao bọc (Wrapper) nhận toàn bộ payload từ Mobile
+    // Class chính hứng payload từ Mobile
     public class CreateStockImportRequest
     {
         public Guid StoreId { get; set; }
-        public string? Notes { get; set; } // Mobile gửi là notes
+        public string? Note { get; set; }        // Mobile gửi "notes", JSON parser tự map sang Note/Notes
         public string? SupplierName { get; set; }
         
-        // Danh sách chi tiết
+        // Danh sách chi tiết nhập kho
         public List<StockImportDetailDto> Details { get; set; } = new();
     }
 

@@ -19,7 +19,7 @@ namespace BizFlow.OrderAPI.Controllers
         private readonly ProductServiceClient _productService;
         private readonly IHubContext<NotificationHub> _hubContext;
         private readonly IPublishEndpoint _publishEndpoint;
-        private readonly IConfiguration _configuration; // [New] Để đọc config
+        private readonly IConfiguration _configuration;
 
         public OrdersController(
             OrderDbContext context,
@@ -35,181 +35,72 @@ namespace BizFlow.OrderAPI.Controllers
             _configuration = configuration;
         }
 
+        // ========================================================================
+        // 1. LẤY DANH SÁCH ĐƠN HÀNG (CÓ LỌC THEO STORE)
+        // ========================================================================
         [HttpGet]
-        public async Task<IActionResult> GetOrders()
+        public async Task<IActionResult> GetOrders([FromQuery] Guid? storeId)
         {
-            var orders = await _context.Orders
+            var query = _context.Orders.AsQueryable();
+
+            // Nếu có storeId, chỉ lấy đơn của store đó
+            if (storeId.HasValue)
+            {
+                query = query.Where(o => o.StoreId == storeId.Value);
+            }
+
+            var orders = await query
                 .OrderByDescending(o => o.OrderDate)
-                .Select(o => new {
+                .Select(o => new
+                {
                     o.Id,
                     o.OrderCode,
                     o.OrderDate,
                     o.TotalAmount,
                     o.Status,
                     o.PaymentMethod,
-                    o.CustomerId
+                    o.CustomerId,
+                    // Lấy thêm tên khách hàng để hiển thị trên Web Admin
+                    CustomerName = _context.Customers
+                                    .Where(c => c.Id == o.CustomerId)
+                                    .Select(c => c.FullName)
+                                    .FirstOrDefault() ?? "Khách lẻ"
                 })
                 .ToListAsync();
 
             return Ok(orders);
         }
 
-        [HttpPost]
-        public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
+        // ========================================================================
+        // 2. [QUAN TRỌNG] LẤY ĐƠN HÀNG CỦA 1 KHÁCH (CHO MOBILE APP)
+        // ========================================================================
+        [HttpGet("customer/{customerId}")]
+        public async Task<IActionResult> GetOrdersByCustomer(Guid customerId)
         {
-            // 1. Validate
-            if (request.Items == null || !request.Items.Any())
-                return BadRequest("Đơn hàng rỗng.");
-
-            // =================================================================
-            // 2. FAIL-FAST VALIDATION (Synchronous)
-            // =================================================================
-            // Kiểm tra kho trước để báo lỗi ngay cho UI nếu hết hàng (User Experience tốt hơn)
-            var checkStockRequest = request.Items.Select(i => new CheckStockRequest
-            {
-                ProductId = i.ProductId,
-                UnitId = i.UnitId,
-                Quantity = i.Quantity
-            }).ToList();
-
-            var stockResults = await _productService.CheckStockAsync(checkStockRequest);
-            var notEnough = stockResults.FirstOrDefault(x => !x.IsEnough);
-            
-            if (notEnough != null)
-                return BadRequest($"Sản phẩm ID {notEnough.ProductId} không đủ hàng.");
-
-            // =================================================================
-            // 3. XÂY DỰNG ĐƠN HÀNG (Domain Logic)
-            // =================================================================
-            // Sử dụng Transaction của EF Core để đảm bảo tính toàn vẹn (Atomicity)
-            // Đặc biệt quan trọng khi dùng Outbox Pattern
-            using var transaction = await _context.Database.BeginTransactionAsync();
-
-            try
-            {
-                var order = new Order
+            var orders = await _context.Orders
+                .Where(o => o.CustomerId == customerId)
+                .OrderByDescending(o => o.OrderDate) // Đơn mới nhất lên đầu
+                .Select(o => new
                 {
-                    OrderCode = $"ORD-{DateTime.Now:yyyyMMddHHmmss}-{new Random().Next(100, 999)}", // Thêm Random để tránh trùng giây
-                    CustomerId = request.CustomerId,
-                    StoreId = request.StoreId,
-                    OrderDate = DateTime.UtcNow,
-                    PaymentMethod = request.PaymentMethod,
-                    Status = "Pending", // Trạng thái ban đầu luôn là Pending
-                    OrderItems = new List<OrderItem>()
-                };
+                    o.Id,
+                    o.OrderCode,
+                    o.OrderDate,
+                    o.TotalAmount,
+                    o.Status,
+                    o.PaymentMethod
+                })
+                .ToListAsync();
 
-                decimal totalAmount = 0;
-                foreach (var item in request.Items)
-                {
-                    var stock = stockResults.First(x => x.ProductId == item.ProductId);
-                    var orderItem = new OrderItem
-                    {
-                        ProductId = item.ProductId,
-                        UnitId = item.UnitId,
-                        Quantity = item.Quantity,
-                        UnitPrice = stock.UnitPrice,
-                        Total = stock.UnitPrice * item.Quantity
-                    };
-                    order.OrderItems.Add(orderItem);
-                    totalAmount += orderItem.Total;
-                }
-                order.TotalAmount = totalAmount;
-
-                // =================================================================
-                // 4. KIỂM TRA HẠN MỨC CÔNG NỢ
-                // =================================================================
-                if (request.PaymentMethod == "Debt")
-                {
-                    var currentDebt = await _context.DebtLogs
-                        .Where(d => d.CustomerId == request.CustomerId)
-                        .SumAsync(d => d.Amount);
-
-                    // Lấy hạn mức từ Config thay vì Hardcode
-                    decimal creditLimit = _configuration.GetValue<decimal>("OrderSettings:CreditLimit", 50_000_000);
-
-                    if (currentDebt + totalAmount > creditLimit)
-                    {
-                        return BadRequest($"Vượt hạn mức tín dụng. Hạn mức: {creditLimit:N0}, Hiện nợ: {currentDebt:N0}, Đơn mới: {totalAmount:N0}");
-                    }
-
-                    _context.DebtLogs.Add(new DebtLog
-                    {
-                        CustomerId = request.CustomerId,
-                        StoreId = request.StoreId,
-                        Amount = totalAmount,
-                        Action = "Debit",
-                        Reason = $"Nợ đơn hàng {order.OrderCode}",
-                        CreatedAt = DateTime.UtcNow
-                    });
-
-                    var customer = await _context.Customers.FindAsync(request.CustomerId);
-                    if (customer != null) customer.CurrentDebt += totalAmount;
-                }
-
-                // =================================================================
-                // 5. SAVE & PUBLISH (TRANSACTIONAL OUTBOX)
-                // =================================================================
-                _context.Orders.Add(order);
-                
-                // LƯU Ý QUAN TRỌNG: 
-                // Khi dùng MassTransit Transactional Outbox (cần config trong Program.cs),
-                // Lệnh Publish này KHÔNG gửi ngay lập tức. Nó chỉ lưu message vào bảng "OutboxMessage" trong DB.
-                // Khi SaveChangesAsync thành công, MassTransit mới lấy message ra gửi đi.
-                await _publishEndpoint.Publish(new OrderCreatedEvent
-                {
-                    OrderId = order.Id, // Lưu ý: Id có thể chưa có nếu dùng Identity Column chưa Save, nên dùng Guid hoặc OrderCode
-                    OrderCode = order.OrderCode, // Nên truyền thêm OrderCode
-                    StoreId = order.StoreId,
-                    TotalAmount = order.TotalAmount,
-                    CreatedAt = order.OrderDate,
-                    OrderItems = request.Items.Select(x => new OrderItemEvent // Nên truyền chi tiết item để bên kia trừ kho
-                    {
-                        ProductId = x.ProductId,
-                        UnitId = x.UnitId,
-                        Quantity = x.Quantity
-                    }).ToList()
-                });
-
-                // SaveChanges sẽ lưu cả Order, DebtLog VÀ Outbox Message trong 1 Transaction
-                await _context.SaveChangesAsync(); 
-                
-                await transaction.CommitAsync();
-
-                // =================================================================
-                // 6. REMOVED: DEDUCT STOCK MANUAL
-                // =================================================================
-                // Đã xóa đoạn gọi _productService.DeductStockAsync.
-                // Việc trừ kho bây giờ hoàn toàn phụ thuộc vào RabbitMQ Consumer.
-
-                // 7️⃣ BẮN SIGNALR SANG WEB ADMIN
-                await _hubContext.Clients.Group("Admins").SendAsync("ReceiveNotification", new
-                {
-                    title = "Đơn hàng mới! 🛒",
-                    message = $"Vừa có đơn hàng {order.OrderCode} trị giá {order.TotalAmount:N0}đ",
-                    orderId = order.Id
-                });
-
-                return Ok(new
-                {
-                    Message = "Tạo đơn thành công",
-                    OrderId = order.Id,
-                    OrderCode = order.OrderCode
-                });
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                // Log error here
-                return StatusCode(500, $"Lỗi xử lý đơn hàng: {ex.Message}");
-            }
+            return Ok(orders);
         }
 
-        // [New] Lấy chi tiết đơn hàng (Xử lý lỗi 404 và Vòng lặp JSON)
+        // ========================================================================
+        // 3. CHI TIẾT ĐƠN HÀNG
+        // ========================================================================
         [HttpGet("{id}")]
         public async Task<IActionResult> GetOrderById(Guid id)
         {
             var order = await _context.Orders
-                .Include(o => o.OrderItems)
                 .Where(o => o.Id == id)
                 .Select(o => new
                 {
@@ -221,6 +112,10 @@ namespace BizFlow.OrderAPI.Controllers
                     o.PaymentMethod,
                     o.CustomerId,
                     o.StoreId,
+                    CustomerName = _context.Customers
+                                    .Where(c => c.Id == o.CustomerId)
+                                    .Select(c => c.FullName)
+                                    .FirstOrDefault() ?? "Khách lẻ",
                     OrderItems = o.OrderItems.Select(oi => new
                     {
                         oi.Id,
@@ -238,7 +133,144 @@ namespace BizFlow.OrderAPI.Controllers
             return Ok(order);
         }
 
-        // [New] Cập nhật trạng thái đơn hàng (Xác nhận đơn hàng)
+        // ========================================================================
+        // 4. TẠO ĐƠN HÀNG MỚI
+        // ========================================================================
+        [HttpPost]
+        public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
+        {
+            // Validate sơ bộ
+            if (request.Items == null || !request.Items.Any())
+                return BadRequest("Đơn hàng rỗng.");
+
+            // A. Kiểm tra tồn kho (Synchronous Fail-Fast)
+            var checkStockRequest = request.Items.Select(i => new CheckStockRequest
+            {
+                ProductId = i.ProductId,
+                UnitId = i.UnitId,
+                Quantity = i.Quantity
+            }).ToList();
+
+            var stockResults = await _productService.CheckStockAsync(checkStockRequest);
+            var notEnough = stockResults.FirstOrDefault(x => !x.IsEnough);
+
+            if (notEnough != null)
+                return BadRequest($"Sản phẩm ID {notEnough.ProductId} không đủ hàng.");
+
+            // B. Transaction DB
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                // B1. Tạo Order Object
+                var order = new Order
+                {
+                    OrderCode = $"ORD-{DateTime.Now:yyMMddHHmm}-{new Random().Next(100, 999)}", // Mã ngắn gọn hơn
+                    CustomerId = request.CustomerId,
+                    StoreId = request.StoreId,
+                    OrderDate = DateTime.UtcNow,
+                    PaymentMethod = request.PaymentMethod,
+                    Status = "Confirmed", // Đặt luôn là Confirmed nếu đã qua bước check kho (hoặc Pending tùy logic)
+                    OrderItems = new List<OrderItem>()
+                };
+
+                decimal totalAmount = 0;
+                foreach (var item in request.Items)
+                {
+                    var stock = stockResults.First(x => x.ProductId == item.ProductId);
+                    var orderItem = new OrderItem
+                    {
+                        ProductId = item.ProductId,
+                        UnitId = item.UnitId,
+                        Quantity = item.Quantity,
+                        UnitPrice = stock.UnitPrice, // Lấy giá từ Service trả về (chuẩn nhất)
+                        Total = stock.UnitPrice * item.Quantity
+                    };
+                    order.OrderItems.Add(orderItem);
+                    totalAmount += orderItem.Total;
+                }
+                order.TotalAmount = totalAmount;
+
+                // B2. Xử lý Ghi nợ (Nếu chọn Trả sau)
+                if (request.PaymentMethod == "Debt")
+                {
+                    // Check hạn mức
+                    var currentDebt = await _context.DebtLogs
+                        .Where(d => d.CustomerId == request.CustomerId)
+                        .SumAsync(d => d.Action == "Debit" ? d.Amount : -d.Amount); // Tính tổng nợ thực tế (Debit - Credit)
+
+                    // Config hạn mức
+                    decimal creditLimit = _configuration.GetValue<decimal>("OrderSettings:CreditLimit", 50_000_000);
+
+                    if (currentDebt + totalAmount > creditLimit)
+                    {
+                        return BadRequest($"Vượt hạn mức tín dụng. Hạn mức: {creditLimit:N0}, Hiện nợ: {currentDebt:N0}");
+                    }
+
+                    // Ghi log nợ
+                    _context.DebtLogs.Add(new DebtLog
+                    {
+                        CustomerId = request.CustomerId,
+                        StoreId = request.StoreId,
+                        Amount = totalAmount,
+                        Action = "Debit",
+                        Reason = $"Nợ đơn hàng {order.OrderCode}",
+                        CreatedAt = DateTime.UtcNow,
+                        RefOrderId = order.Id
+                    });
+
+                    // Update số dư khách
+                    var customer = await _context.Customers.FindAsync(request.CustomerId);
+                    if (customer != null) customer.CurrentDebt += totalAmount;
+                }
+
+                // B3. Lưu xuống DB
+                _context.Orders.Add(order);
+                
+                // B4. Bắn Event (MassTransit Outbox pattern)
+                await _publishEndpoint.Publish(new OrderCreatedEvent
+                {
+                    OrderId = order.Id, // GUID sẽ được EF sinh ra hoặc gán trước khi Save
+                    OrderCode = order.OrderCode,
+                    StoreId = order.StoreId,
+                    TotalAmount = order.TotalAmount,
+                    CreatedAt = order.OrderDate,
+                    OrderItems = request.Items.Select(x => new OrderItemEvent
+                    {
+                        ProductId = x.ProductId,
+                        UnitId = x.UnitId,
+                        Quantity = x.Quantity
+                    }).ToList()
+                });
+
+                await _context.SaveChangesAsync(); // Lưu Order + DebtLog + Outbox Message
+                await transaction.CommitAsync();
+
+                // B5. Gửi thông báo Realtime
+                await _hubContext.Clients.Group("Admins").SendAsync("ReceiveNotification", new
+                {
+                    title = "Đơn hàng mới! 🛒",
+                    message = $"Đơn {order.OrderCode} - {order.TotalAmount:N0}đ",
+                    orderId = order.Id
+                });
+
+                return Ok(new
+                {
+                    Message = "Tạo đơn thành công",
+                    OrderId = order.Id,
+                    OrderCode = order.OrderCode
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, $"Lỗi xử lý đơn hàng: {ex.Message}");
+            }
+        }
+
+        // ========================================================================
+        // 5. CẬP NHẬT TRẠNG THÁI
+        // ========================================================================
         [HttpPut("{id}/status")]
         public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] string status)
         {

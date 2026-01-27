@@ -1,12 +1,35 @@
 import 'package:json_annotation/json_annotation.dart';
 
-// 1. Export file Product để các file khác chỉ cần import models.dart là đủ
 export 'models/product.dart';
-// export 'models/dashboard_stats.dart'; // Bỏ comment nếu có file này
 
 part 'models.g.dart';
 
-// ================= CART ITEM (Giỏ hàng) =================
+// ============================================================================
+//                               GLOBAL HELPERS
+// ============================================================================
+
+// Helper 1: Đọc ID an toàn (chấp nhận cả int, String, GUID)
+Object? _readIdAsString(Map map, String key) {
+  Object? value =
+      map[key] ?? map['Id'] ?? map['ID'] ?? map['customerId'] ?? map['orderId'];
+  return value?.toString() ?? '';
+}
+
+// [FIX] Helper 2: Parse ngày tháng thủ công để tránh lỗi ép kiểu
+DateTime _parseDate(dynamic date) {
+  if (date == null) return DateTime.now();
+  if (date is DateTime) return date;
+  if (date is String) {
+    // Thử parse, nếu lỗi thì trả về hiện tại để không crash app
+    return DateTime.tryParse(date)?.toLocal() ?? DateTime.now();
+  }
+  return DateTime.now();
+}
+
+// ============================================================================
+//                               CART & ORDER
+// ============================================================================
+
 @JsonSerializable()
 class CartItem {
   final int productId;
@@ -29,7 +52,6 @@ class CartItem {
 
   double get total => price * quantity;
 
-  // [CẢI TIẾN] Thêm copyWith để dễ dàng update số lượng trong Riverpod
   CartItem copyWith({
     int? productId,
     String? productName,
@@ -55,10 +77,42 @@ class CartItem {
   Map<String, dynamic> toJson() => _$CartItemToJson(this);
 }
 
-// ================= CUSTOMER (Khách hàng) =================
+// Model cho lịch sử đơn hàng
+@JsonSerializable()
+class Order {
+  @JsonKey(readValue: _readIdAsString)
+  final String id;
+
+  @JsonKey(defaultValue: '')
+  final String orderCode;
+
+  // [FIX] Sử dụng fromJson để parse an toàn
+  @JsonKey(fromJson: _parseDate)
+  final DateTime orderDate;
+
+  final double totalAmount;
+  final String status;
+  final String paymentMethod;
+
+  Order({
+    required this.id,
+    required this.orderCode,
+    required this.orderDate,
+    required this.totalAmount,
+    required this.status,
+    required this.paymentMethod,
+  });
+
+  factory Order.fromJson(Map<String, dynamic> json) => _$OrderFromJson(json);
+  Map<String, dynamic> toJson() => _$OrderToJson(this);
+}
+
+// ============================================================================
+//                               CUSTOMER & DEBT
+// ============================================================================
+
 @JsonSerializable()
 class Customer {
-  // Dùng helper để đọc ID an toàn (chấp nhận cả int lẫn String từ server)
   @JsonKey(readValue: _readIdAsString)
   final String id;
 
@@ -82,7 +136,6 @@ class Customer {
     this.currentDebt = 0.0,
   });
 
-  // Helper: Đọc tên từ nhiều trường khác nhau (fallback)
   static Object? _readName(Map map, String key) {
     return map['fullName'] ?? map['name'] ?? map['customerName'] ?? 'Khách lẻ';
   }
@@ -92,7 +145,98 @@ class Customer {
   Map<String, dynamic> toJson() => _$CustomerToJson(this);
 }
 
-// ================= HELPER CLASSES (Check kho & Giá) =================
+@JsonSerializable()
+class DebtLog {
+  @JsonKey(readValue: _readIdAsString)
+  final String id;
+
+  final double amount;
+
+  @JsonKey(defaultValue: 'Debit')
+  final String action;
+
+  @JsonKey(defaultValue: '')
+  final String reason;
+
+  // [FIX] Sử dụng fromJson để parse an toàn
+  @JsonKey(fromJson: _parseDate)
+  final DateTime createdAt;
+
+  DebtLog({
+    required this.id,
+    required this.amount,
+    required this.action,
+    required this.reason,
+    required this.createdAt,
+  });
+
+  factory DebtLog.fromJson(Map<String, dynamic> json) =>
+      _$DebtLogFromJson(json);
+  Map<String, dynamic> toJson() => _$DebtLogToJson(this);
+}
+
+// ============================================================================
+//                               ACCOUNTING / DASHBOARD
+// ============================================================================
+
+@JsonSerializable()
+class CashBookItem {
+  @JsonKey(readValue: _readIdAsString)
+  final String id;
+
+  @JsonKey(readValue: _readIdAsString)
+  final String customerId;
+
+  @JsonKey(defaultValue: 'Khách lẻ')
+  final String customerName;
+
+  final double amount;
+
+  @JsonKey(defaultValue: '')
+  final String action;
+
+  @JsonKey(defaultValue: '')
+  final String type;
+
+  @JsonKey(defaultValue: '')
+  final String reason;
+
+  // [FIX] Sử dụng fromJson để parse an toàn
+  @JsonKey(fromJson: _parseDate)
+  final DateTime createdAt;
+
+  CashBookItem({
+    required this.id,
+    required this.customerId,
+    required this.customerName,
+    required this.amount,
+    required this.action,
+    required this.type,
+    required this.reason,
+    required this.createdAt,
+  });
+
+  factory CashBookItem.fromJson(Map<String, dynamic> json) =>
+      _$CashBookItemFromJson(json);
+  Map<String, dynamic> toJson() => _$CashBookItemToJson(this);
+}
+
+@JsonSerializable()
+class RevenueStat {
+  final String date;
+  final double revenue;
+
+  RevenueStat({required this.date, required this.revenue});
+
+  factory RevenueStat.fromJson(Map<String, dynamic> json) =>
+      _$RevenueStatFromJson(json);
+  Map<String, dynamic> toJson() => _$RevenueStatToJson(this);
+}
+
+// ============================================================================
+//                               STOCK & AUTH
+// ============================================================================
+
 @JsonSerializable()
 class ProductPriceResult {
   final int productId;
@@ -135,11 +279,8 @@ class SimpleCheckStockResult {
       _$SimpleCheckStockResultFromJson(json);
 }
 
-// ================= AUTH MODELS (User & Token) =================
 @JsonSerializable()
 class User {
-  // [QUAN TRỌNG] Server Identity trả về GUID (String), không phải int
-  // Helper này đảm bảo luôn convert sang String an toàn.
   @JsonKey(readValue: _readIdAsString)
   final String id;
 
@@ -163,12 +304,13 @@ class User {
     required this.storeId,
   });
 
-  // Helper đọc key không phân biệt hoa thường (Id vs id) và xử lý null
   static Object? _readCaseInsensitive(Map map, String key) {
     if (map.containsKey(key)) return map[key]?.toString() ?? '';
-    // Thử key viết hoa chữ cái đầu (VD: email -> Email)
-    String capitalized = key[0].toUpperCase() + key.substring(1);
-    return map[capitalized]?.toString() ?? '';
+    if (key.isNotEmpty) {
+      String capitalized = key[0].toUpperCase() + key.substring(1);
+      return map[capitalized]?.toString() ?? '';
+    }
+    return '';
   }
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
@@ -191,21 +333,4 @@ class AuthResponse {
   factory AuthResponse.fromJson(Map<String, dynamic> json) =>
       _$AuthResponseFromJson(json);
   Map<String, dynamic> toJson() => _$AuthResponseToJson(this);
-}
-
-// ================= GLOBAL HELPERS =================
-
-// Hàm helper "thần thánh" để fix lỗi crash String/int
-// Dùng cho User.id và Customer.id
-Object? _readIdAsString(Map map, String key) {
-  // 1. Thử tìm key chính xác (ví dụ "id")
-  Object? value = map[key];
-
-  // 2. Nếu không có, thử tìm key viết hoa ("Id", "ID")
-  if (value == null) {
-    value = map['Id'] ?? map['ID'];
-  }
-
-  // 3. Convert sang String an toàn
-  return value?.toString() ?? '';
 }

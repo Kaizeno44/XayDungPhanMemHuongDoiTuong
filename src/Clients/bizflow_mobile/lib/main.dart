@@ -1,49 +1,50 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // Provider cũ
-// ignore: depend_on_referenced_packages
-import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod; // Riverpod
+import 'package:provider/provider.dart'; // Provider (Legacy)
+import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod; // Riverpod (New)
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
-// [MỚI] Import để hỗ trợ định dạng ngày tháng tiếng Việt
 import 'package:intl/date_symbol_data_local.dart';
 
 // --- SERVICE & CORE IMPORTS ---
 import 'package:bizflow_mobile/core/router/app_router.dart';
 import 'package:bizflow_mobile/repositories/product_repository.dart';
 import 'package:bizflow_mobile/services/signalr_service.dart';
-import 'core/service_locator.dart';
-import 'core/api_service.dart';
-import 'services/fcm_service.dart';
+import 'package:bizflow_mobile/core/service_locator.dart';
+import 'package:bizflow_mobile/core/api_service.dart';
+import 'package:bizflow_mobile/services/fcm_service.dart';
 
 // --- PROVIDER IMPORTS ---
-import 'providers/auth_provider.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart';
+
+// 1. Định nghĩa Constants cho Hive
+class StorageConstants {
+  static const String productBox = 'productCache';
+  static const String authBox = 'authBox';
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Khởi tạo Firebase
+  // 2. Khởi tạo Firebase
   try {
-    // Nếu bạn có file firebase_options.dart thì dùng:
-    // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await Firebase.initializeApp();
     debugPrint("✅ Firebase đã khởi tạo thành công");
   } catch (e) {
     debugPrint("❌ Lỗi khởi tạo Firebase: $e");
   }
 
-  // 2. Khởi tạo ServiceLocator (Cho các Service cũ)
+  // 3. Khởi tạo ServiceLocator
   ServiceLocator.setup();
 
-  // 3. Khởi tạo Hive (Database cục bộ)
+  // 4. Khởi tạo Hive
   await Hive.initFlutter();
-  await Hive.openBox('productCache');
-  await Hive.openBox('authBox');
+  await Hive.openBox(StorageConstants.productBox);
+  await Hive.openBox(StorageConstants.authBox);
 
-  // [QUAN TRỌNG] 4. Khởi tạo dữ liệu Locale cho Intl (Tiếng Việt)
-  // Giúp sửa lỗi LocaleDataException khi dùng DateFormat('...', 'vi')
+  // 5. Khởi tạo Locale
   await initializeDateFormatting('vi', null);
 
-  // 5. Khởi tạo FCM (Push Notification)
+  // 6. Khởi tạo FCM
   try {
     FCMService().initialize();
   } catch (e) {
@@ -56,21 +57,18 @@ Future<void> main() async {
   );
 }
 
-// AppConfig: Cung cấp các Provider cũ (Legacy) cho các màn hình chưa chuyển đổi hoàn toàn
-class AppConfig extends StatelessWidget {
+/// AppConfig: Cầu nối giữa Riverpod và Provider cũ
+class AppConfig extends riverpod.ConsumerWidget {
   const AppConfig({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, riverpod.WidgetRef ref) {
     return MultiProvider(
       providers: [
-        // A. ApiService
         Provider<ApiService>(create: (_) => ServiceLocator.apiService),
-
-        // B. ProductRepository
         Provider<ProductRepository>(create: (_) => ServiceLocator.productRepo),
-
-        // C. AuthProvider (Vẫn giữ lại vì dùng chung nhiều nơi)
+        
+        // --- LEGACY AUTH PROVIDER ---
         ChangeNotifierProvider(
           create: (_) => AuthProvider(ServiceLocator.apiService),
         ),
@@ -85,48 +83,129 @@ class MyApp extends riverpod.ConsumerWidget {
 
   @override
   Widget build(BuildContext context, riverpod.WidgetRef ref) {
-    // 1. Lấy cấu hình Router từ Riverpod
+    // 1. Router từ Riverpod
     final goRouter = ref.watch(appRouterProvider);
 
-    // 2. [QUAN TRỌNG] Logic quản lý SignalR tự động theo Auth
-    // Sử dụng .select để chỉ lắng nghe giá trị boolean isAuthenticated
+    // 2. LOGIC SIGNALR (Tự động kết nối/ngắt kết nối)
+    // Lắng nghe trạng thái Auth để kết nối SignalR
     ref.listen<bool>(
       authNotifierProvider.select((value) => value.isAuthenticated),
       (previous, isAuthenticated) {
-        // A. Vừa Đăng nhập thành công (false -> true)
-        // Hoặc mở app đã có sẵn token (previous là null/false)
         if (isAuthenticated && (previous == false || previous == null)) {
-          debugPrint(
-            "🚀 Auth Changed: Login Detected -> Connecting SignalR...",
-          );
+          debugPrint("🚀 Auth Changed: Login -> Connecting SignalR...");
           ref.read(signalRServiceProvider.notifier).connect();
-        }
-        // B. Vừa Đăng xuất (true -> false)
-        else if (!isAuthenticated && (previous == true)) {
-          debugPrint(
-            "🚀 Auth Changed: Logout Detected -> Disconnecting SignalR...",
-          );
+        } else if (!isAuthenticated && (previous == true)) {
+          debugPrint("🚀 Auth Changed: Logout -> Disconnecting SignalR...");
           ref.read(signalRServiceProvider.notifier).disconnect();
         }
       },
     );
 
+    // 3. DESIGN SYSTEM
+    const primaryColor = Colors.orange;
+    final primaryDark = Colors.orange[800]!;
+    final errorColor = Colors.red[700]!;
+
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: primaryColor,
+      primary: primaryDark,
+      error: errorColor,
+      secondary: Colors.blue,
+      surface: Colors.white,
+    );
+
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'BizFlow Mobile',
+      routerConfig: goRouter,
+      
+      // --- THEME SETUP ---
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: Colors.blue,
-        // Font chữ tiếng Việt hiển thị tốt hơn
+        colorScheme: colorScheme,
         fontFamily: 'Roboto',
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
+
+        // AppBar Theme
+        appBarTheme: AppBarTheme(
+          backgroundColor: primaryDark,
+          foregroundColor: Colors.white,
           centerTitle: true,
-          backgroundColor: Colors.blue, // Đổi màu mặc định cho đẹp
+          elevation: 0,
+          titleTextStyle: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+
+        // ElevatedButton Theme
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryDark,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+
+        // Input Decoration Theme
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey[50],
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: primaryDark, width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: errorColor, width: 1.5),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: errorColor, width: 2),
+          ),
+          labelStyle: TextStyle(color: Colors.grey[700]),
+          prefixIconColor: primaryDark,
+        ),
+
+        // Bottom Navigation Bar Theme
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryColor,
+          unselectedItemColor: Colors.grey,
+          type: BottomNavigationBarType.fixed,
+          elevation: 8,
+        ),
+
+        // Card Theme
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          color: Colors.white,
+          margin: const EdgeInsets.only(bottom: 12),
+        ),
+
+        // Floating Action Button
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: primaryDark,
           foregroundColor: Colors.white,
         ),
       ),
-      routerConfig: goRouter,
     );
   }
 }

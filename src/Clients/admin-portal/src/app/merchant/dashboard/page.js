@@ -56,7 +56,11 @@ export default function MerchantDashboard() {
         axios.get("http://localhost:5000/api/Products/low-stock", {
            headers: { Authorization: `Bearer ${token}` }
         }),
+<<<<<<< HEAD
         // 4. API Lấy toàn bộ đơn hàng để tính toán doanh thu tháng
+=======
+        // 4. API Lấy toàn bộ đơn hàng để tính doanh thu tháng
+>>>>>>> 95becfb976338347e14c7b5830bea484b619fc1d
         axios.get("http://localhost:5000/api/orders", {
            headers: { Authorization: `Bearer ${token}` }
         })
@@ -100,21 +104,30 @@ export default function MerchantDashboard() {
         }));
       }
 
+<<<<<<< HEAD
       // 1.1 Xử lý Doanh thu tháng và Biểu đồ từ danh sách đơn hàng
+=======
+      // 1.1 Xử lý Doanh thu tháng từ danh sách đơn hàng (Lọc Confirmed)
+>>>>>>> 95becfb976338347e14c7b5830bea484b619fc1d
       if (ordersRes.status === 'fulfilled') {
         const allOrders = ordersRes.value.data || [];
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
+<<<<<<< HEAD
         // Lọc đơn hàng "Confirmed" trong tháng hiện tại
         const monthlyOrders = allOrders.filter(o => {
+=======
+        const confirmedOrdersInMonth = allOrders.filter(o => {
+>>>>>>> 95becfb976338347e14c7b5830bea484b619fc1d
           const orderDate = new Date(o.orderDate || o.OrderDate);
           return (o.status === "Confirmed" || o.Status === "Confirmed") &&
                  orderDate.getMonth() === currentMonth &&
                  orderDate.getFullYear() === currentYear;
         });
 
+<<<<<<< HEAD
         const totalMonthlyRevenue = monthlyOrders.reduce((sum, o) => sum + (o.totalAmount || o.TotalAmount || 0), 0);
         
         // Gom nhóm doanh thu theo ngày để vẽ biểu đồ
@@ -140,6 +153,17 @@ export default function MerchantDashboard() {
           orders: monthlyOrders.length,
           todayRevenue: totalMonthlyRevenue
         }));
+=======
+        const totalRevenue = confirmedOrdersInMonth.reduce((sum, o) => sum + (o.totalAmount || o.TotalAmount || 0), 0);
+        
+        setSummaryStats(prev => ({
+          ...prev,
+          orders: confirmedOrdersInMonth.length,
+          todayRevenue: totalRevenue
+        }));
+
+        // Cập nhật lại biểu đồ nếu cần (Ở đây ta giữ nguyên biểu đồ từ API DashboardStats vì nó đã có logic theo ngày)
+>>>>>>> 95becfb976338347e14c7b5830bea484b619fc1d
       }
 
       // 2. Xử lý Tổng số sản phẩm

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart'; // Thêm GoRouter
 import '../providers/auth_provider.dart';
-import 'main_screen.dart'; // Import màn hình chính chứa 3 Tab
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +12,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController =
-      TextEditingController(); // Có thể gán giá trị mặc định để test nhanh: text: "owner@bizflow.com"
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
 
@@ -28,27 +27,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // 1. Validate Form
     if (!_formKey.currentState!.validate()) return;
 
-    // 2. Ẩn bàn phím để trải nghiệm tốt hơn
+    // 2. Ẩn bàn phím
     FocusScope.of(context).unfocus();
 
     try {
       // 3. Gọi hàm login từ Riverpod
       final success = await ref
-          .read(
-            authNotifierProvider.notifier,
-          ) // Lưu ý: thêm .notifier để gọi hàm
+          .read(authNotifierProvider.notifier)
           .login(_emailController.text.trim(), _passwordController.text);
 
-      // 4. Kiểm tra kết quả và Điều hướng
+      // 4. Kiểm tra kết quả và Điều hướng bằng GoRouter
       if (success && mounted) {
-        // Chuyển hướng sang MainScreen (Màn hình chứa Dashboard, Sản phẩm, Kho)
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-        );
+        // Dùng context.go để thay thế hoàn toàn route hiện tại (người dùng không thể back lại login)
+        context.go('/home'); 
       }
     } catch (e) {
       if (mounted) {
-        // Hiển thị lỗi đẹp hơn
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -70,7 +64,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe trạng thái loading
+    // Lắng nghe trạng thái loading để disable nút bấm
     final isLoading = ref.watch(authNotifierProvider).isLoading;
 
     return Scaffold(
@@ -116,10 +110,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // --- FORM INPUT ---
+                // --- FORM INPUT: EMAIL ---
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   decoration: InputDecoration(
                     labelText: 'Email',
                     prefixIcon: Icon(
@@ -129,29 +124,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.grey),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Colors.orange[800]!,
-                        width: 2,
-                      ),
-                    ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
-                      return 'Vui lòng nhập email';
+                    if (value == null || value.isEmpty) return 'Vui lòng nhập email';
                     if (!value.contains('@')) return 'Email không hợp lệ';
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
+
+                // --- FORM INPUT: PASSWORD ---
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_isPasswordVisible,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   decoration: InputDecoration(
                     labelText: 'Mật khẩu',
                     prefixIcon: Icon(
@@ -160,35 +146,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility
-                            : Icons.visibility_off,
+                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
                         color: Colors.grey,
                       ),
-                      onPressed: () => setState(
-                        () => _isPasswordVisible = !_isPasswordVisible,
-                      ),
+                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.grey),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Colors.orange[800]!,
-                        width: 2,
-                      ),
-                    ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
-                      return 'Vui lòng nhập mật khẩu';
-                    if (value.length < 6)
-                      return 'Mật khẩu phải ít nhất 6 ký tự';
+                    if (value == null || value.isEmpty) return 'Vui lòng nhập mật khẩu';
+                    if (value.length < 6) return 'Mật khẩu phải ít nhất 6 ký tự';
                     return null;
                   },
                 ),
@@ -198,19 +167,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {
-                      // Tính năng phát triển sau
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Tính năng đang phát triển'),
-                        ),
+                        const SnackBar(content: Text('Tính năng đang phát triển')),
                       );
                     },
                     child: const Text(
                       'Quên mật khẩu?',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -225,7 +188,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange[800],
                       foregroundColor: Colors.white,
-                      elevation: 2,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -234,17 +196,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ? const SizedBox(
                             height: 24,
                             width: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                           )
                         : const Text(
                             'ĐĂNG NHẬP',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                   ),
                 ),
@@ -255,13 +211,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
-                      "Chưa có tài khoản? ",
-                      style: TextStyle(color: Colors.grey),
-                    ),
+                    const Text("Chưa có tài khoản? ", style: TextStyle(color: Colors.grey)),
                     GestureDetector(
                       onTap: () {
                         // Điều hướng sang màn hình đăng ký
+                         context.push('/register'); // Ví dụ route đăng ký
                       },
                       child: Text(
                         "Đăng ký ngay",

@@ -1,14 +1,13 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
+import 'package:bizflow_mobile/models.dart';
+import 'package:bizflow_mobile/order_service.dart';
 import 'package:bizflow_mobile/pay_debt_screen.dart';
 import 'package:bizflow_mobile/providers/auth_provider.dart';
-// import 'package:bizflow_mobile/core/config/api_config.dart'; // Uncomment nếu dùng file config
 
-class OrderHistoryScreen extends StatefulWidget {
+class OrderHistoryScreen extends ConsumerStatefulWidget {
   final String customerId;
   final String customerName;
 
@@ -19,26 +18,25 @@ class OrderHistoryScreen extends StatefulWidget {
   });
 
   @override
-  State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
+  ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
 }
 
-class _OrderHistoryScreenState extends State<OrderHistoryScreen>
+class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final _orderService = OrderService();
 
-  // Dữ liệu
-  List<dynamic> _orders = [];
-  List<dynamic> _debtLogs = [];
+  List<Order> _orders = [];
+  List<DebtLog> _debtLogs = [];
   double _currentDebt = 0;
-
   bool _isLoading = true;
-  String? _errorMessage;
+  String _debugMessage = "";
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _fetchAllData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshData());
   }
 
   @override
@@ -47,62 +45,168 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen>
     super.dispose();
   }
 
-  // --- GỌI API LẤY DỮ LIỆU ---
-  Future<void> _fetchAllData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  // Hàm tải dữ liệu (Đã hỗ trợ Pull-to-refresh)
+  Future<void> _refreshData() async {
+    // Chỉ hiện loading xoay xoay khi dữ liệu đang trống
+    if (_orders.isEmpty && _debtLogs.isEmpty) {
+      setState(() => _isLoading = true);
+    }
+
+    final userState = ref.read(authNotifierProvider);
+    final storeId = userState.currentUser?.storeId;
+
+    if (storeId == null || storeId.isEmpty) return;
 
     try {
-      // Lưu ý: Cập nhật IP/Port cho đúng với Backend của bạn
-      final baseUrl = "http://10.0.2.2:5103/api/Customers/${widget.customerId}";
-
-      // Gọi song song 2 API
+      // Gọi song song 3 API
       final results = await Future.wait([
-        http.get(
-          Uri.parse("$baseUrl/history"),
-        ), // 1. Lịch sử đơn hàng + Tổng nợ
-        http.get(Uri.parse("$baseUrl/debt-logs")), // 2. Lịch sử biến động nợ
+        _orderService.getOrdersByCustomer(widget.customerId),
+        _orderService.getDebtHistory(widget.customerId),
+        _orderService.getCustomers(storeId: storeId),
       ]);
 
-      final historyRes = results[0];
-      final logsRes = results[1];
+      if (!mounted) return;
 
-      if (historyRes.statusCode == 200) {
-        final historyData = jsonDecode(historyRes.body);
-        setState(() {
-          _orders = historyData['orders'] ?? [];
-          _currentDebt = (historyData['currentDebt'] ?? 0).toDouble();
-        });
-      } else {
-        _errorMessage = "Lỗi tải đơn hàng: ${historyRes.statusCode}";
-      }
+      final orders = results[0] as List<Order>;
+      final debtLogs = results[1] as List<DebtLog>;
+      final customers = results[2] as List<Customer>;
 
-      if (logsRes.statusCode == 200) {
-        final logsData = jsonDecode(logsRes.body);
-        setState(() {
-          _debtLogs = logsData is List ? logsData : [];
-        });
-      }
+      final currentCustomer = customers.firstWhere(
+        (c) => c.id == widget.customerId,
+        orElse: () => Customer(id: '', name: '', currentDebt: 0),
+      );
 
-      // Nếu cả 2 API đều fail thì mới báo lỗi chung, còn không thì vẫn hiện cái nào lấy được
-      if (historyRes.statusCode != 200 && logsRes.statusCode != 200) {
-        _errorMessage = "Không thể tải dữ liệu";
-      }
+      setState(() {
+        _orders = orders;
+        // Sắp xếp đơn mới nhất lên đầu
+        _orders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+
+        _debtLogs = debtLogs;
+        // Sắp xếp lịch sử mới nhất lên đầu
+        _debtLogs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        _currentDebt = currentCustomer.currentDebt;
+        _isLoading = false;
+        _debugMessage = ""; // Xóa thông báo lỗi nếu tải thành công
+      });
     } catch (e) {
-      _errorMessage = "Lỗi kết nối: $e";
-    } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _debugMessage = "Có lỗi khi tải dữ liệu: $e";
+        });
       }
     }
   }
 
+  // Hàm hiển thị chi tiết đơn hàng (Popup)
+  void _showOrderDetail(Order order) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (_, controller) {
+            return Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                Text(
+                  "Chi tiết đơn #${order.orderCode}",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Divider(),
+                Expanded(
+                  child: ListView(
+                    controller: controller,
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _buildDetailRow(
+                        "Ngày đặt",
+                        DateFormat('dd/MM/yyyy HH:mm').format(order.orderDate),
+                      ),
+                      _buildDetailRow(
+                        "Trạng thái",
+                        order.status == "Confirmed"
+                            ? "Đã hoàn thành"
+                            : order.status,
+                      ),
+                      _buildDetailRow(
+                        "Thanh toán",
+                        order.paymentMethod == "Debt" ? "Ghi nợ" : "Tiền mặt",
+                      ),
+                      const SizedBox(height: 20),
+                      // Nếu muốn hiển thị danh sách sản phẩm chi tiết, bạn cần gọi thêm API lấy OrderItem ở đây
+                      // Hiện tại tạm thời hiển thị tổng tiền
+                      const Divider(),
+                      _buildDetailRow(
+                        "TỔNG TIỀN",
+                        NumberFormat(
+                              "#,##0",
+                              "vi_VN",
+                            ).format(order.totalAmount) +
+                            " đ",
+                        isBold: true,
+                        color: Colors.blue[800],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(
+    String label,
+    String value, {
+    bool isBold = false,
+    Color? color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: Colors.grey[600])),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              fontSize: isBold ? 16 : 14,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currencyFormat = NumberFormat("#,##0", "vi_VN");
+    final userState = ref.watch(authNotifierProvider);
+    final storeId = userState.currentUser?.storeId ?? "";
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -112,7 +216,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen>
           children: [
             Text(widget.customerName, style: const TextStyle(fontSize: 18)),
             const Text(
-              "Chi tiết khách hàng",
+              "Lịch sử giao dịch",
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ],
@@ -131,304 +235,289 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen>
           ],
         ),
       ),
+
+      floatingActionButton: _currentDebt > 0
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PayDebtScreen(
+                      customerId: widget.customerId,
+                      customerName: widget.customerName,
+                      storeId: storeId,
+                      currentDebt: _currentDebt,
+                    ),
+                  ),
+                );
+                if (result == true) _refreshData();
+              },
+              backgroundColor: Colors.red,
+              icon: const Icon(Icons.payment, color: Colors.white),
+              label: const Text(
+                "Thu Nợ Ngay",
+                style: TextStyle(color: Colors.white),
+              ),
+            )
+          : null,
+
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // --- CARD TỔNG NỢ (Sticky Header) ---
+                if (_debugMessage.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.orange.shade100,
+                    child: Text(
+                      _debugMessage,
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+
+                // Header Tổng Nợ
                 Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 5,
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 3,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Nợ hiện tại",
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              currencyFormat.format(_currentDebt),
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: _currentDebt > 0
-                                    ? Colors.red
-                                    : Colors.green,
-                              ),
-                            ),
-                          ],
-                        ),
+                      const Text(
+                        "Tổng nợ hiện tại",
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: _currentDebt <= 0
-                            ? null
-                            : () async {
-                                final result = await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PayDebtScreen(
-                                      customerId: widget.customerId,
-                                      customerName: widget.customerName,
-                                      storeId:
-                                          authProvider.currentUser?.storeId ??
-                                          "",
-                                      currentDebt: _currentDebt,
-                                    ),
-                                  ),
-                                );
-                                // Reload lại dữ liệu nếu có thanh toán
-                                if (result == true) _fetchAllData();
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[800],
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "${currencyFormat.format(_currentDebt)} đ",
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: _currentDebt > 0 ? Colors.red : Colors.green,
                         ),
-                        icon: const Icon(Icons.payment, size: 18),
-                        label: const Text("Thanh toán"),
                       ),
                     ],
                   ),
                 ),
 
-                // --- TAB CONTENT ---
+                // Body chứa TabView
                 Expanded(
-                  child: _errorMessage != null
-                      ? Center(
-                          child: Text(
-                            _errorMessage!,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                        )
-                      : TabBarView(
-                          controller: _tabController,
-                          children: [
-                            // TAB 1: DANH SÁCH ĐƠN HÀNG
-                            _buildOrderList(currencyFormat),
-
-                            // TAB 2: LỊCH SỬ BIẾN ĐỘNG NỢ
-                            _buildDebtLogList(currencyFormat),
-                          ],
-                        ),
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      // Bọc danh sách trong RefreshIndicator
+                      RefreshIndicator(
+                        onRefresh: _refreshData,
+                        child: _buildOrderList(currencyFormat),
+                      ),
+                      RefreshIndicator(
+                        onRefresh: _refreshData,
+                        child: _buildDebtLogList(currencyFormat),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
     );
   }
 
-  // --- WIDGET: DANH SÁCH ĐƠN HÀNG ---
-  Widget _buildOrderList(NumberFormat currencyFormat) {
+  // Widget Danh sách Đơn Hàng
+  Widget _buildOrderList(NumberFormat fmt) {
     if (_orders.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.shopping_cart_outlined, size: 60, color: Colors.grey),
-            SizedBox(height: 10),
-            Text("Chưa có đơn hàng nào", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
+      return ListView(
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          const Center(
+            child: Icon(
+              Icons.shopping_bag_outlined,
+              size: 48,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Center(
+            child: Text(
+              "Chưa có đơn hàng nào",
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+        ],
       );
     }
-
-    return RefreshIndicator(
-      onRefresh: _fetchAllData,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(12),
-        itemCount: _orders.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final order = _orders[index];
-          final isDebt = order['paymentMethod'] == 'Debt';
-
-          return Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: Colors.grey.shade200),
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: _orders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (ctx, i) {
+        final order = _orders[i];
+        final isDebt = order.paymentMethod == 'Debt';
+        return Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: Colors.grey.shade200),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
             ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+            // Sự kiện Click xem chi tiết
+            onTap: () => _showOrderDetail(order),
+            leading: CircleAvatar(
+              backgroundColor: Colors.blue.shade50,
+              child: Icon(Icons.receipt, color: Colors.blue[800], size: 20),
+            ),
+            title: Text(
+              order.orderCode.isNotEmpty ? "#${order.orderCode}" : "Đơn hàng",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              DateFormat('dd/MM/yyyy HH:mm').format(order.orderDate),
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  "${fmt.format(order.totalAmount)} đ",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
-                child: const Icon(Icons.receipt_outlined, color: Colors.blue),
-              ),
-              title: Text(
-                "#${order['orderCode'] ?? '---'}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(
-                DateFormat(
-                  'dd/MM/yyyy HH:mm',
-                ).format(DateTime.parse(order['orderDate'])),
-                style: const TextStyle(fontSize: 12),
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    currencyFormat.format(order['totalAmount']),
-                    style: const TextStyle(
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDebt
+                        ? Colors.red.withOpacity(0.1)
+                        : Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    isDebt ? "Ghi nợ" : "Tiền mặt",
+                    style: TextStyle(
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                      color: isDebt ? Colors.red : Colors.green,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDebt
-                          ? Colors.red.withOpacity(0.1)
-                          : Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      isDebt ? 'Ghi nợ' : 'Tiền mặt',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: isDebt ? Colors.red : Colors.green,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
-  // --- WIDGET: LỊCH SỬ BIẾN ĐỘNG NỢ ---
-  Widget _buildDebtLogList(NumberFormat currencyFormat) {
+  // Widget Lịch Sử Nợ
+  Widget _buildDebtLogList(NumberFormat fmt) {
     if (_debtLogs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.history_edu, size: 60, color: Colors.grey),
-            SizedBox(height: 10),
-            Text(
-              "Chưa có giao dịch nợ nào",
+      return ListView(
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          const Center(
+            child: Icon(Icons.history, size: 48, color: Colors.grey),
+          ),
+          const SizedBox(height: 10),
+          const Center(
+            child: Text(
+              "Chưa có lịch sử nợ",
               style: TextStyle(color: Colors.grey),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: _debtLogs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (ctx, i) {
+        final log = _debtLogs[i];
+        // Phân biệt màu sắc rõ ràng
+        final isCredit =
+            log.action == 'Credit' ||
+            log.action == 'Payment' ||
+            log.action == 'Repayment' ||
+            log.action == 'Thu nợ';
 
-    return RefreshIndicator(
-      onRefresh: _fetchAllData,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(12),
-        itemCount: _debtLogs.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final log = _debtLogs[index];
-          final isPayment = log['action'] == 'Payment'; // True nếu là trả tiền
-          final amount = (log['amount'] as num).toDouble();
-
-          return Card(
-            elevation: 0,
-            color: isPayment ? Colors.green.shade50 : Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(
-                color: isPayment ? Colors.green.shade200 : Colors.grey.shade200,
+        return Card(
+          elevation: 0,
+          color: isCredit
+              ? Colors.green.withOpacity(0.05)
+              : Colors.red.withOpacity(0.02),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: isCredit
+                ? BorderSide(color: Colors.green.withOpacity(0.3))
+                : BorderSide(color: Colors.red.withOpacity(0.1)),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            leading: CircleAvatar(
+              backgroundColor: isCredit ? Colors.green : Colors.red,
+              radius: 18,
+              child: Icon(
+                isCredit ? Icons.arrow_downward : Icons.arrow_upward,
+                color: Colors.white,
+                size: 18,
               ),
             ),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: isPayment ? Colors.green : Colors.red,
-                radius: 18,
-                child: Icon(
-                  isPayment ? Icons.arrow_downward : Icons.arrow_upward,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-              title: Text(
-                isPayment ? "Thanh toán nợ" : "Mua hàng ghi nợ",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: isPayment ? Colors.green[800] : Colors.black87,
-                ),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            title: Text(
+              isCredit ? "Khách trả tiền" : "Ghi nợ",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (log.reason.isNotEmpty)
                   Text(
-                    DateFormat(
-                      'dd/MM/yyyy HH:mm',
-                    ).format(DateTime.parse(log['timestamp'])),
+                    log.reason,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
                   ),
-                  if (log['note'] != null && log['note'].toString().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        "📝 ${log['note']}",
-                        style: const TextStyle(
-                          fontStyle: FontStyle.italic,
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    "${isPayment ? '' : '+'}${currencyFormat.format(amount)}", // Payment đã âm sẵn ở BE hoặc tùy logic
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: isPayment ? Colors.green[700] : Colors.red,
-                    ),
-                  ),
-                  // Nếu Backend trả về NewDebtSnapshot thì hiển thị, ko thì ẩn
-                  if (log['newDebtSnapshot'] != null)
-                    Text(
-                      "Dư nợ: ${currencyFormat.format(log['newDebtSnapshot'])}",
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                ],
+                Text(
+                  DateFormat('dd/MM/yyyy HH:mm').format(log.createdAt),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                ),
+              ],
+            ),
+            trailing: Text(
+              "${isCredit ? '-' : '+'}${fmt.format(log.amount.abs())} đ",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: isCredit ? Colors.green : Colors.red,
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -1,224 +1,363 @@
-import 'dart:convert';
+import 'package:bizflow_mobile/models.dart';
+import 'package:bizflow_mobile/order_history_screen.dart';
+import 'package:bizflow_mobile/providers/auth_provider.dart';
+import 'package:bizflow_mobile/order_service.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-// [QUAN TRỌNG] Import màn hình Chi tiết (OrderHistoryScreen)
-import 'package:bizflow_mobile/order_history_screen.dart';
-
-class DebtListScreen extends StatefulWidget {
+class DebtListScreen extends ConsumerStatefulWidget {
   const DebtListScreen({super.key});
 
   @override
-  State<DebtListScreen> createState() => _DebtListScreenState();
+  ConsumerState<DebtListScreen> createState() => _DebtListScreenState();
 }
 
-class _DebtListScreenState extends State<DebtListScreen> {
-  List<dynamic> _debtors = [];
+class _DebtListScreenState extends ConsumerState<DebtListScreen> {
+  final _orderService = OrderService();
+  final _currencyFormat = NumberFormat("#,##0", "vi_VN");
+  final TextEditingController _searchController = TextEditingController();
+
+  // Dữ liệu gốc từ API
+  List<Customer> _allCustomers = [];
+  // Dữ liệu đã lọc để hiển thị (Tối ưu hiệu năng)
+  List<Customer> _filteredCustomers = [];
+
   bool _isLoading = true;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    // Gọi API ngay khi màn hình mở
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fetchDebtors();
-    });
+    // Gọi API ngay sau khi màn hình được dựng xong
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchCustomers());
   }
 
-  // --- HÀM GỌI API LẤY KHÁCH NỢ ---
-  Future<void> _fetchDebtors() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Hàm lấy dữ liệu từ API
+  Future<void> _fetchCustomers() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
-    try {
-      // [FIX LỖI KHÔNG HIỆN DỮ LIỆU]
-      // Bỏ tham số ?storeId=... để lấy tất cả khách hàng (giống logic bên checkout)
-      // Điều này giúp tránh lỗi nếu storeId của User và Customer bị lệch nhau
-      final url = Uri.parse("http://10.0.2.2:5103/api/Customers");
+    final userState = ref.read(authNotifierProvider);
+    final storeId = userState.currentUser?.storeId;
 
-      final response = await http.get(
-        url,
-        headers: {"Content-Type": "application/json"},
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> allCustomers = jsonDecode(response.body);
-
-        // Lọc danh sách: Chỉ lấy khách có nợ > 0
-        final debtors = allCustomers.where((c) {
-          final debt = (c['currentDebt'] ?? 0).toDouble();
-          return debt > 0; // Chỉ lấy người có nợ
-        }).toList();
-
-        // Sắp xếp: Người nợ nhiều nhất lên đầu
-        debtors.sort(
-          (a, b) => (b['currentDebt'] ?? 0).compareTo(a['currentDebt'] ?? 0),
-        );
-
+    if (storeId == null || storeId.isEmpty) {
+      if (mounted) {
         setState(() {
-          _debtors = debtors;
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _errorMessage = "Lỗi tải dữ liệu: ${response.statusCode}";
+          _errorMessage = "Không tìm thấy thông tin cửa hàng.";
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = "Lỗi kết nối: $e";
-        _isLoading = false;
-      });
+      return;
     }
+
+    try {
+      final customers = await _orderService.getCustomers(storeId: storeId);
+      if (mounted) {
+        setState(() {
+          _allCustomers = customers;
+          _isLoading = false;
+          // Sau khi có dữ liệu mới, chạy bộ lọc ngay lập tức
+          _applyFilter();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Lỗi kết nối: $e";
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  /// Logic lọc và sắp xếp tách biệt khỏi hàm build
+  void _applyFilter() {
+    final query = _searchController.text.toLowerCase();
+
+    final temp = _allCustomers.where((c) {
+      return c.name.toLowerCase().contains(query) || c.phone.contains(query);
+    }).toList();
+
+    // Sắp xếp: Ai nợ nhiều nhất lên đầu
+    temp.sort((a, b) => b.currentDebt.compareTo(a.currentDebt));
+
+    setState(() {
+      _filteredCustomers = temp;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
-
+    // build giờ đây rất nhẹ, chỉ render UI từ _filteredCustomers có sẵn
     return Scaffold(
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Sổ Nợ Khách Hàng'),
+        title: const Text("Sổ Nợ Khách Hàng"),
         centerTitle: true,
-        backgroundColor: Colors.blue[800],
+        elevation: 0,
+        backgroundColor: Colors.blue[800], // Thêm màu cho đẹp hơn
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _fetchDebtors, // Nút làm mới danh sách
+            tooltip: "Làm mới",
+            onPressed: _fetchCustomers,
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: _fetchDebtors,
-                    child: const Text("Thử lại"),
-                  ),
-                ],
+      body: Column(
+        children: [
+          // --- SEARCH SECTION ---
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            color: Colors.blue[800], // Đồng bộ màu AppBar
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: "Tìm tên hoặc số điện thoại...",
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                // Thêm nút Clear (X) tiện lợi
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          _searchController.clear();
+                          _applyFilter(); // Reset list
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               ),
-            )
-          : _debtors.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 80,
-                    color: Colors.green.shade200,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Tuyệt vời! Không có khách nào nợ tiền.",
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: _debtors.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final customer = _debtors[index];
-                final currentDebt = (customer['currentDebt'] ?? 0).toDouble();
+              onChanged: (value) => _applyFilter(),
+            ),
+          ),
 
-                return Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.red.shade50,
-                      radius: 24,
-                      child: Icon(
-                        Icons.account_balance_wallet,
-                        color: Colors.red.shade700,
-                      ),
-                    ),
-                    title: Text(
-                      customer['name'] ?? 'Khách lẻ',
+          // --- LIST SECTION ---
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _errorMessage != null
+                    ? _buildErrorWidget()
+                    : _filteredCustomers.isEmpty
+                        ? _buildEmptyWidget()
+                        : RefreshIndicator(
+                            onRefresh: _fetchCustomers,
+                            child: ListView.separated(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _filteredCustomers.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) =>
+                                  _buildCustomerCard(_filteredCustomers[index]),
+                            ),
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerCard(Customer customer) {
+    final hasDebt = customer.currentDebt > 0;
+
+    return Card(
+      elevation: hasDebt ? 3 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: hasDebt
+            ? BorderSide(color: Colors.red.shade200, width: 1)
+            : BorderSide.none,
+      ),
+      color: Colors.white,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OrderHistoryScreen(
+                customerId: customer.id,
+                customerName: customer.name,
+              ),
+            ),
+          );
+          // Reload lại danh sách sau khi quay lại (để cập nhật số nợ mới)
+          _fetchCustomers();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              // Avatar Icon
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: hasDebt ? Colors.red.shade50 : Colors.green.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  hasDebt ? Icons.history_edu : Icons.check_circle_outline,
+                  color: hasDebt ? Colors.red : Colors.green,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer.name,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    subtitle: Text(
-                      customer['phone'] ?? '---',
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    const SizedBox(height: 4),
+                    Row(
                       children: [
+                        const Icon(Icons.phone, size: 12, color: Colors.grey),
+                        const SizedBox(width: 4),
                         Text(
-                          currencyFormat.format(currentDebt),
-                          style: TextStyle(
-                            color: Colors.red.shade700,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Xem chi tiết ',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue,
-                              ),
-                            ),
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              size: 10,
-                              color: Colors.blue,
-                            ),
-                          ],
+                          customer.phone.isNotEmpty ? customer.phone : "---",
+                          style:
+                              TextStyle(color: Colors.grey[600], fontSize: 13),
                         ),
                       ],
                     ),
-                    onTap: () async {
-                      // [QUAN TRỌNG] Chuyển sang màn hình CHI TIẾT (Lịch sử + Trả nợ)
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => OrderHistoryScreen(
-                            customerId: customer['id'].toString(),
-                            customerName: customer['name'] ?? 'Khách hàng',
-                          ),
-                        ),
-                      );
+                  ],
+                ),
+              ),
 
-                      // Quay lại thì reload danh sách (phòng trường hợp đã trả hết nợ)
-                      _fetchDebtors();
-                    },
-                  ),
-                );
-              },
+              // Debt Amount
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (hasDebt) ...[
+                    Text(
+                      "ĐANG NỢ",
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.red[400],
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "${_currencyFormat.format(customer.currentDebt)} đ",
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        "Sạch nợ",
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: Colors.grey[300]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyWidget() {
+    // Nếu đang tìm kiếm mà không thấy
+    if (_searchController.text.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text(
+              "Không tìm thấy \"${_searchController.text}\"",
+              style: const TextStyle(color: Colors.grey),
             ),
+          ],
+        ),
+      );
+    }
+    // Nếu danh sách rỗng hoàn toàn
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_outline, size: 64, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          const Text("Chưa có khách hàng nào",
+              style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black87),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _fetchCustomers,
+              icon: const Icon(Icons.refresh),
+              label: const Text("Thử lại"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[800],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -26,6 +26,24 @@ Map<String, dynamic> _$CartItemToJson(CartItem instance) => <String, dynamic>{
       'maxStock': instance.maxStock,
     };
 
+Order _$OrderFromJson(Map<String, dynamic> json) => Order(
+      id: _readIdAsString(json, 'id') as String,
+      orderCode: json['orderCode'] as String? ?? '',
+      orderDate: _parseDate(json['orderDate']),
+      totalAmount: (json['totalAmount'] as num).toDouble(),
+      status: json['status'] as String,
+      paymentMethod: json['paymentMethod'] as String,
+    );
+
+Map<String, dynamic> _$OrderToJson(Order instance) => <String, dynamic>{
+      'id': instance.id,
+      'orderCode': instance.orderCode,
+      'orderDate': instance.orderDate.toIso8601String(),
+      'totalAmount': instance.totalAmount,
+      'status': instance.status,
+      'paymentMethod': instance.paymentMethod,
+    };
+
 Customer _$CustomerFromJson(Map<String, dynamic> json) => Customer(
       id: _readIdAsString(json, 'id') as String,
       name: Customer._readName(json, 'name') as String,
@@ -40,6 +58,56 @@ Map<String, dynamic> _$CustomerToJson(Customer instance) => <String, dynamic>{
       'phoneNumber': instance.phone,
       'address': instance.address,
       'currentDebt': instance.currentDebt,
+    };
+
+DebtLog _$DebtLogFromJson(Map<String, dynamic> json) => DebtLog(
+      id: _readIdAsString(json, 'id') as String,
+      amount: (json['amount'] as num).toDouble(),
+      action: json['action'] as String? ?? 'Debit',
+      reason: json['reason'] as String? ?? '',
+      createdAt: _parseDate(json['createdAt']),
+    );
+
+Map<String, dynamic> _$DebtLogToJson(DebtLog instance) => <String, dynamic>{
+      'id': instance.id,
+      'amount': instance.amount,
+      'action': instance.action,
+      'reason': instance.reason,
+      'createdAt': instance.createdAt.toIso8601String(),
+    };
+
+CashBookItem _$CashBookItemFromJson(Map<String, dynamic> json) => CashBookItem(
+      id: _readIdAsString(json, 'id') as String,
+      customerId: _readIdAsString(json, 'customerId') as String,
+      customerName: json['customerName'] as String? ?? 'Khách lẻ',
+      amount: (json['amount'] as num).toDouble(),
+      action: json['action'] as String? ?? '',
+      type: json['type'] as String? ?? '',
+      reason: json['reason'] as String? ?? '',
+      createdAt: _parseDate(json['createdAt']),
+    );
+
+Map<String, dynamic> _$CashBookItemToJson(CashBookItem instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'customerId': instance.customerId,
+      'customerName': instance.customerName,
+      'amount': instance.amount,
+      'action': instance.action,
+      'type': instance.type,
+      'reason': instance.reason,
+      'createdAt': instance.createdAt.toIso8601String(),
+    };
+
+RevenueStat _$RevenueStatFromJson(Map<String, dynamic> json) => RevenueStat(
+      date: json['date'] as String,
+      revenue: (json['revenue'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$RevenueStatToJson(RevenueStat instance) =>
+    <String, dynamic>{
+      'date': instance.date,
+      'revenue': instance.revenue,
     };
 
 ProductPriceResult _$ProductPriceResultFromJson(Map<String, dynamic> json) =>

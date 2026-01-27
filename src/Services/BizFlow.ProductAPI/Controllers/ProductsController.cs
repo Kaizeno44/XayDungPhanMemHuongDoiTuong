@@ -3,9 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using BizFlow.ProductAPI.Data;
 using BizFlow.ProductAPI.DbModels;
 using BizFlow.ProductAPI.DTOs;
-using BizFlow.ProductAPI.Hubs; // Thêm using cho ProductHub
-using Microsoft.AspNetCore.SignalR; // Thêm using cho SignalR
-// using Microsoft.AspNetCore.Authorization; // Mở lại khi có Auth
+using BizFlow.ProductAPI.Hubs;
+using Microsoft.AspNetCore.SignalR;
+// using Microsoft.AspNetCore.Authorization; // Mở lại khi cấu hình Auth
 
 namespace BizFlow.ProductAPI.Controllers
 {
@@ -14,12 +14,12 @@ namespace BizFlow.ProductAPI.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly ProductDbContext _context;
-        private readonly IHubContext<ProductHub> _hubContext; // Inject IHubContext
+        private readonly IHubContext<ProductHub> _hubContext;
 
         public ProductsController(ProductDbContext context, IHubContext<ProductHub> hubContext)
         {
             _context = context;
-            _hubContext = hubContext; // Gán hubContext
+            _hubContext = hubContext;
         }
 
         // ==========================================
@@ -110,7 +110,7 @@ namespace BizFlow.ProductAPI.Controllers
             });
         }
 
-        // 2.2 Kiểm tra tồn kho (Read-only) - Đã sửa để chấp nhận CheckStockRequestWrapperDto
+        // 2.2 Kiểm tra tồn kho (Read-only)
         [HttpPost("check-stock")]
         public async Task<IActionResult> CheckStock([FromBody] CheckStockRequestWrapperDto wrapper)
         {
@@ -157,30 +157,29 @@ namespace BizFlow.ProductAPI.Controllers
 
         // 3.1 Tạo sản phẩm 
         [HttpPost]
-        // [Authorize(Roles = "Admin")] // Mở lại dòng này nếu đã cấu hình Auth
+        // [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
         {
-            // 1. Kiểm tra trùng SKU
             if (await _context.Products.AnyAsync(p => p.Sku == request.Sku))
                 return BadRequest(new { message = "Mã SKU đã tồn tại!" });
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // 2. Lưu thông tin chính (Product)
+                // 1. Lưu thông tin chính (Product)
                 var product = new Product
                 {
                     Name = request.Name,
                     Sku = request.Sku,
                     CategoryId = request.CategoryId,
                     BaseUnit = request.BaseUnitName,
-                    ImageUrl = request.ImageUrl, // Đã map thêm ảnh
+                    ImageUrl = request.ImageUrl,
                     Description = request.Description
                 };
                 _context.Products.Add(product);
                 await _context.SaveChangesAsync();
 
-                // 3. Lưu tồn kho ban đầu (Inventory)
+                // 2. Lưu tồn kho ban đầu (Inventory)
                 var inventory = new Inventory
                 {
                     ProductId = product.Id,
@@ -189,7 +188,7 @@ namespace BizFlow.ProductAPI.Controllers
                 };
                 _context.Inventories.Add(inventory);
 
-                // 4. Lưu đơn vị gốc (Base Unit)
+                // 3. Lưu đơn vị gốc (Base Unit)
                 var baseUnit = new ProductUnit
                 {
                     ProductId = product.Id,
@@ -200,7 +199,7 @@ namespace BizFlow.ProductAPI.Controllers
                 };
                 _context.ProductUnits.Add(baseUnit);
 
-                // 5. Lưu các đơn vị quy đổi khác (QUAN TRỌNG: Phần này bị thiếu ở code cũ)
+                // 4. Lưu các đơn vị quy đổi khác
                 if (request.OtherUnits != null && request.OtherUnits.Any())
                 {
                     foreach (var u in request.OtherUnits)
@@ -210,7 +209,7 @@ namespace BizFlow.ProductAPI.Controllers
                             ProductId = product.Id,
                             UnitName = u.UnitName,
                             ConversionValue = u.ConversionValue,
-                            IsBaseUnit = false, // Đây là đơn vị phụ
+                            IsBaseUnit = false,
                             Price = u.Price
                         });
                     }
@@ -229,7 +228,6 @@ namespace BizFlow.ProductAPI.Controllers
         }
 
         // 3.2 CẬP NHẬT KHO THÔNG MINH (Smart Update Stock)
-        // 👉 ĐÂY LÀ PHẦN QUAN TRỌNG NHẤT CHO PERSON C
         // PUT: /api/Products/stock?mode=out
         [HttpPut("stock")]
         public async Task<IActionResult> UpdateStock(
@@ -241,7 +239,7 @@ namespace BizFlow.ProductAPI.Controllers
             {
                 var inventory = await _context.Inventories.FirstOrDefaultAsync(x => x.ProductId == request.ProductId);
 
-                // Nếu chưa có kho -> Tạo mới (Chỉ cho phép nếu là Nhập hàng)
+                // Nếu chưa có kho -> Tạo mới
                 if (inventory == null)
                 {
                     bool isDeducting = mode == "out" || (mode == "auto" && request.QuantityChange < 0);
@@ -260,17 +258,16 @@ namespace BizFlow.ProductAPI.Controllers
 
                 if (mode == "out")
                 {
-                    // Person C gửi số 10 -> Code tự nhân -1 -> Thành -10 (TRỪ KHO)
+                    // Trừ kho
                     quantityBase = -1 * absQuantity * unit.ConversionValue;
                 }
                 else if (mode == "in")
                 {
-                    // Luôn cộng (Nhập kho)
+                    // Cộng kho
                     quantityBase = absQuantity * unit.ConversionValue;
                 }
                 else // mode == "auto"
                 {
-                    // Giữ nguyên dấu (Âm là trừ, Dương là cộng)
                     quantityBase = request.QuantityChange * unit.ConversionValue;
                 }
 
@@ -304,7 +301,7 @@ namespace BizFlow.ProductAPI.Controllers
             }
         }
 
-        // 3.3 Lấy danh sách sản phẩm sắp hết hàng (Cảnh báo tồn kho)
+        // 3.3 Lấy danh sách sản phẩm sắp hết hàng
         [HttpGet("low-stock")]
         public async Task<IActionResult> GetLowStockProducts([FromQuery] double threshold = 10)
         {
@@ -324,7 +321,7 @@ namespace BizFlow.ProductAPI.Controllers
             return Ok(lowStockProducts);
         }
 
-        // 3.4 Cập nhật thông tin sản phẩm
+        // 3.4 Cập nhật sản phẩm
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] UpdateProductRequest request)
         {
@@ -337,6 +334,9 @@ namespace BizFlow.ProductAPI.Controllers
 
             if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
 
+            if (product.Sku != request.Sku && await _context.Products.AnyAsync(p => p.Sku == request.Sku))
+                return BadRequest(new { message = "Mã SKU đã tồn tại!" });
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -346,7 +346,6 @@ namespace BizFlow.ProductAPI.Controllers
                 product.ImageUrl = request.ImageUrl;
                 product.Description = request.Description;
 
-                // Cập nhật tồn kho nếu có truyền vào
                 if (request.InitialStock.HasValue)
                 {
                     if (product.Inventory == null)
@@ -361,31 +360,30 @@ namespace BizFlow.ProductAPI.Controllers
                     }
                 }
 
-                // Cập nhật đơn vị tính
                 if (request.Units != null)
                 {
-                    foreach (var unitDto in request.Units)
+                    foreach (var uDto in request.Units)
                     {
-                        if (unitDto.Id.HasValue && unitDto.Id > 0)
+                        if (uDto.Id.HasValue)
                         {
-                            var existingUnit = product.ProductUnits.FirstOrDefault(u => u.Id == unitDto.Id);
-                            if (existingUnit != null)
+                            var unit = product.ProductUnits.FirstOrDefault(x => x.Id == uDto.Id.Value);
+                            if (unit != null)
                             {
-                                existingUnit.UnitName = unitDto.UnitName;
-                                existingUnit.Price = unitDto.Price;
-                                existingUnit.ConversionValue = unitDto.ConversionValue;
-                                existingUnit.IsBaseUnit = unitDto.IsBaseUnit;
+                                unit.UnitName = uDto.UnitName;
+                                unit.Price = uDto.Price;
+                                unit.ConversionValue = uDto.ConversionValue;
+                                unit.IsBaseUnit = uDto.IsBaseUnit;
                             }
                         }
                         else
                         {
-                            product.ProductUnits.Add(new ProductUnit
+                            _context.ProductUnits.Add(new ProductUnit
                             {
                                 ProductId = id,
-                                UnitName = unitDto.UnitName,
-                                Price = unitDto.Price,
-                                ConversionValue = unitDto.ConversionValue,
-                                IsBaseUnit = unitDto.IsBaseUnit
+                                UnitName = uDto.UnitName,
+                                Price = uDto.Price,
+                                ConversionValue = uDto.ConversionValue,
+                                IsBaseUnit = uDto.IsBaseUnit
                             });
                         }
                     }
@@ -394,11 +392,9 @@ namespace BizFlow.ProductAPI.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                // Thông báo cập nhật qua SignalR
-                if (request.InitialStock.HasValue)
-                {
-                    await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", id, product.Inventory.Quantity);
-                }
+                // SignalR update
+                if (product.Inventory != null)
+                    await _hubContext.Clients.All.SendAsync("ReceiveStockUpdate", product.Id, product.Inventory.Quantity);
 
                 return Ok(new { message = "Cập nhật sản phẩm thành công" });
             }
@@ -422,9 +418,9 @@ namespace BizFlow.ProductAPI.Controllers
                 await _context.SaveChangesAsync();
                 return Ok(new { message = "Xóa sản phẩm thành công" });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Không thể xóa sản phẩm. Có thể sản phẩm đã có trong đơn hàng hoặc dữ liệu liên quan khác." });
+                return StatusCode(500, new { message = "Không thể xóa sản phẩm do có ràng buộc dữ liệu (đơn hàng, kho...)" });
             }
         }
     }

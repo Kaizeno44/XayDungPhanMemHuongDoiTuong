@@ -67,7 +67,7 @@ export default function ReportsPage() {
       };
 
       const response = await axios.post(
-        "http://localhost:5000/api/Pdf/generate-phieuthu",
+        "http://localhost:5000/api/Pdf/generate",
         pdfData,
         { 
           responseType: "blob",

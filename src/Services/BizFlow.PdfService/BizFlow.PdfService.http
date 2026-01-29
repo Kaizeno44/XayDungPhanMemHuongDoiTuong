@@ -1,0 +1,6 @@
+@BizFlow.PdfService_HostAddress = http://localhost:5277
+
+GET {{BizFlow.PdfService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

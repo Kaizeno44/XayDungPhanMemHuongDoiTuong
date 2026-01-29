@@ -1,13 +1,10 @@
 using BizFlow.OrderAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using BizFlow.OrderAPI.Services;
-using QuestPDF.Infrastructure;
 using MassTransit; 
 using BizFlow.OrderAPI.Hubs;
 using Shared.Kernel.Extensions;
 using System.Reflection;
-
-QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -57,9 +57,7 @@ export default function AdminDashboard() {
     <div className="p-8 bg-gray-50 min-h-screen">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-800">📊 Tổng Quan Hệ Thống</h1>
-        <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-          Xuất báo cáo tháng
-        </button>
+        
       </div>
 
       {/* 1. Kế hoạch thống kê (Analytics) */}
@@ -103,6 +101,8 @@ export default function AdminDashboard() {
         </a>
 
         {/* Cấu hình hệ thống */}
+        <a href="/admin/settings" className="block group">
+
         <div className="bg-white p-6 rounded-xl shadow-sm border hover:border-purple-500 transition cursor-pointer">
           <div className="flex items-center gap-3 mb-2">
             <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><Settings size={24} /></div>
@@ -110,6 +110,7 @@ export default function AdminDashboard() {
           </div>
           <p className="text-gray-500 text-sm">Cập nhật mẫu báo cáo TT88, cài đặt AI toàn cục.</p>
         </div>
+        </a>
 
       </div>
     </div>

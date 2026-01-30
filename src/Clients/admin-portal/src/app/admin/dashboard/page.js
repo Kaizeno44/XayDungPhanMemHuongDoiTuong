@@ -100,15 +100,14 @@ export default function AdminDashboard() {
           </div>
         </a>
 
-        {/* Cấu hình hệ thống */}
+        {/* Cấu hình hệ thống */} 
         <a href="/admin/settings" className="block group">
-
-        <div className="bg-white p-6 rounded-xl shadow-sm border hover:border-purple-500 transition cursor-pointer">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><Settings size={24} /></div>
-            <h3 className="text-lg font-bold">Cấu hình & AI</h3>
-          </div>
-          <p className="text-gray-500 text-sm">Cập nhật mẫu báo cáo TT88, cài đặt AI toàn cục.</p>
+          <div className="bg-white p-6 rounded-xl shadow-sm border hover:border-purple-500 transition cursor-pointer">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><Settings size={24} /></div>
+              <h3 className="text-lg font-bold">Cấu hình & AI</h3>
+            </div>
+            <p className="text-gray-500 text-sm">Cập nhật mẫu báo cáo TT88, cài đặt AI toàn cục.</p>
         </div>
         </a>
       </div>

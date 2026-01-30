@@ -1,4 +1,4 @@
-import 'dart:typed_data'; // <--- Thêm import này
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -6,15 +6,21 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 
 class InvoiceGenerator {
-  // Đổi tên hàm và kiểu trả về
+  // 1. ĐỊNH NGHĨA MÀU SẮC CHỦ ĐẠO (Màu Cam Orange[800] giống App)
+  // Mã Hex của Colors.orange[800] là #EF6C00
+  static const PdfColor _primaryColor = PdfColor.fromInt(0xFFEF6C00);
+  static const PdfColor _textColor = PdfColors.black;
+  static const PdfColor _totalColor = PdfColors.red;
+
   static Future<Uint8List> generate({
-    required PdfPageFormat format, // Thêm tham số format
+    required PdfPageFormat format,
     required List<CartItem> items,
     required String customerName,
     required String paymentMethod,
     required double totalAmount,
     required String storeId,
   }) async {
+    // Tải font chữ hỗ trợ tiếng Việt
     final fontRegular = await PdfGoogleFonts.robotoRegular();
     final fontBold = await PdfGoogleFonts.robotoBold();
     final fontItalic = await PdfGoogleFonts.robotoItalic();
@@ -26,7 +32,7 @@ class InvoiceGenerator {
 
     doc.addPage(
       pw.Page(
-        pageFormat: format, // Dùng format truyền vào từ giao diện xem trước
+        pageFormat: format,
         theme: pw.ThemeData.withFont(
           base: fontRegular,
           bold: fontBold,
@@ -36,7 +42,7 @@ class InvoiceGenerator {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // --- HEADER ---
+              // --- 1. HEADER (TIÊU ĐỀ) ---
               pw.Center(
                 child: pw.Column(
                   children: [
@@ -45,6 +51,7 @@ class InvoiceGenerator {
                       style: pw.TextStyle(
                         fontSize: 24,
                         fontWeight: pw.FontWeight.bold,
+                        color: _primaryColor, // Đổi màu tiêu đề thành màu Cam
                       ),
                     ),
                     pw.SizedBox(height: 5),
@@ -55,64 +62,66 @@ class InvoiceGenerator {
                   ],
                 ),
               ),
-              pw.SizedBox(height: 20),
-              pw.Divider(),
+              pw.SizedBox(height: 15),
+              pw.Divider(color: _primaryColor, thickness: 1), // Đường kẻ màu Cam
+              pw.SizedBox(height: 15),
 
-              // --- THÔNG TIN ---
+              // --- 2. THÔNG TIN KHÁCH HÀNG & ĐƠN HÀNG ---
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Khách hàng: $customerName'),
-                      pw.Text(
-                        'Hình thức TT: ${paymentMethod == "Cash" ? "Tiền mặt" : "Ghi nợ"}',
+                      _buildInfoRow('Khách hàng:', customerName),
+                      pw.SizedBox(height: 4),
+                      _buildInfoRow(
+                        'Hình thức TT:',
+paymentMethod == "Cash" ? "Tiền mặt" : "Ghi nợ",
                       ),
                     ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text('Ngày: ${dateFormat.format(now)}'),
-                      pw.Text(
-                        'Mã đơn: #${now.millisecondsSinceEpoch.toString().substring(8)}',
+                      _buildInfoRow('Ngày:', dateFormat.format(now)),
+                      pw.SizedBox(height: 4),
+                      _buildInfoRow(
+                        'Mã đơn:',
+                        '#${now.millisecondsSinceEpoch.toString().substring(8)}',
+                        isBold: true,
                       ),
                     ],
                   ),
                 ],
               ),
-              pw.SizedBox(height: 15),
+              pw.SizedBox(height: 20),
 
-              // --- BẢNG SẢN PHẨM ---
+              // --- 3. BẢNG SẢN PHẨM ---
               pw.TableHelper.fromTextArray(
                 border: pw.TableBorder.all(
-                  color: PdfColors.grey400,
+                  color: PdfColors.grey300,
                   width: 0.5,
                 ),
                 headerStyle: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   color: PdfColors.white,
+                  fontSize: 10,
                 ),
+                // Đổi nền Header bảng thành màu Cam
                 headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.black,
+                  color: _primaryColor, 
                 ),
+                cellStyle: const pw.TextStyle(fontSize: 10),
                 cellAlignment: pw.Alignment.centerLeft,
-                headers: [
-                  'STT',
-                  'Tên sản phẩm',
-                  'ĐVT',
-                  'SL',
-                  'Đơn giá',
-                  'Thành tiền',
-                ],
+                headers: ['STT', 'Tên sản phẩm', 'ĐVT', 'SL', 'Đơn giá', 'Thành tiền'],
                 columnWidths: {
-                  0: const pw.FixedColumnWidth(30),
-                  1: const pw.FlexColumnWidth(3),
-                  2: const pw.FixedColumnWidth(50),
-                  3: const pw.FixedColumnWidth(40),
-                  4: const pw.FixedColumnWidth(80),
-                  5: const pw.FixedColumnWidth(90),
+                  0: const pw.FixedColumnWidth(30), // STT
+                  1: const pw.FlexColumnWidth(3),   // Tên
+                  2: const pw.FixedColumnWidth(40), // ĐVT
+                  3: const pw.FixedColumnWidth(30), // SL
+                  4: const pw.FixedColumnWidth(70), // Đơn giá
+                  5: const pw.FixedColumnWidth(80), // Thành tiền
                 },
                 data: List<List<dynamic>>.generate(items.length, (index) {
                   final item = items[index];
@@ -120,40 +129,56 @@ class InvoiceGenerator {
                     (index + 1).toString(),
                     item.productName,
                     item.unitName,
-                    item.quantity,
+                    item.quantity.toString(), // Sửa: Chuyển int/double sang String nếu cần
                     currencyFormat.format(item.price),
                     currencyFormat.format(item.total),
                   ];
                 }),
               ),
-              pw.SizedBox(height: 10),
+              pw.SizedBox(height: 15),
 
-              // --- TỔNG TIỀN ---
+              // --- 4. TỔNG TIỀN ---
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
-                  pw.Text(
-                    'Tổng thanh toán: ',
-                    style: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  pw.Text(
-                    currencyFormat.format(totalAmount),
-                    style: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold,
-                      fontSize: 16,
-                      color: PdfColors.red,
-                    ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(
+                        'Tổng thanh toán',
+                        style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+fontSize: 12,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                      pw.SizedBox(height: 5),
+                      pw.Text(
+                        currencyFormat.format(totalAmount),
+                        style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          fontSize: 20,
+                          color: _totalColor, // Màu đỏ cho số tiền
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+              
               pw.Spacer(),
+              
+              // --- 5. FOOTER ---
+              pw.Divider(color: PdfColors.grey300),
+              pw.SizedBox(height: 10),
               pw.Center(
                 child: pw.Text(
-                  'Cảm ơn và hẹn gặp lại!',
-                  style: pw.TextStyle(fontStyle: pw.FontStyle.italic),
+                  'Cảm ơn quý khách và hẹn gặp lại!',
+                  style: pw.TextStyle(
+                    fontStyle: pw.FontStyle.italic,
+                    fontSize: 10,
+                    color: PdfColors.grey600,
+                  ),
                 ),
               ),
             ],
@@ -162,15 +187,31 @@ class InvoiceGenerator {
       ),
     );
 
-    // TRẢ VỀ DỮ LIỆU FILE (Thay vì in luôn)
     return doc.save();
   }
 
-  static Future<void> generateAndPrint({
-    required List<CartItem> items,
-    required String customerName,
-    required String paymentMethod,
-    required double totalAmount,
-    required String storeId,
-  }) async {}
+  // Hàm phụ trợ để tạo dòng thông tin nhanh gọn
+  static pw.Widget _buildInfoRow(String label, String value, {bool isBold = false}) {
+    return pw.RichText(
+      text: pw.TextSpan(
+        children: [
+          pw.TextSpan(
+            text: '$label ',
+            style: pw.TextStyle(
+              color: PdfColors.grey700,
+              fontSize: 10,
+            ),
+          ),
+          pw.TextSpan(
+            text: value,
+            style: pw.TextStyle(
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: PdfColors.black,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

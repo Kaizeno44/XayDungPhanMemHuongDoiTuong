@@ -43,9 +43,9 @@ namespace Identity.Infrastructure.Services
                 Phone = request.Phone,
                 TaxCode = "",
                 SubscriptionPlan = plan,
-                SubscriptionExpiryDate = DateTime.UtcNow.AddMonths(plan.DurationInMonths)
+                SubscriptionExpiryDate = DateTime.UtcNow.AddMonths(plan.DurationInMonths),
+                Users = new List<User>() // Initialize the Users collection
             };
-
             // 4. Tạo User (Owner)
             var newUser = new User
             {
@@ -53,9 +53,9 @@ namespace Identity.Infrastructure.Services
                 Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password), // Hash mật khẩu
                 IsOwner = true,
-                Store = newStore
+                Store = newStore,
+                UserRoles = new List<UserRole>() // Initialize the UserRoles collection
             };
-
             _context.Users.Add(newUser);
             await _context.SaveChangesAsync();
 
@@ -91,9 +91,13 @@ namespace Identity.Infrastructure.Services
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim("StoreId", user.StoreId?.ToString() ?? ""),
-                new Claim("IsOwner", user.IsOwner.ToString())
             };
+
+            if (user.StoreId.HasValue)
+            {
+                claims.Add(new Claim("StoreId", user.StoreId.Value.ToString()));
+            }
+            claims.Add(new Claim("IsOwner", user.IsOwner.ToString()));
 
             // Lấy Key bí mật từ appsettings.json
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"] ?? "SecretKey_Phai_Dai_Tren_32_Ky_Tu_Nhe_Ban_Hien"));

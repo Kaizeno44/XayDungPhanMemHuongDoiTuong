@@ -177,10 +177,10 @@ export default function MerchantDashboard() {
       })
       .catch(err => console.error("SignalR Connection Error: ", err));
 
-    connection.on("ReceiveNotification", (data) => {
+    connection.on("ReceiveOrderNotification", (data) => {
       notification.success({
-        message: data.title,
-        description: data.message,
+        message: `Đơn hàng mới: ${data.OrderCode}`,
+        description: data.Message,
         placement: "topRight",
         duration: 5
       });

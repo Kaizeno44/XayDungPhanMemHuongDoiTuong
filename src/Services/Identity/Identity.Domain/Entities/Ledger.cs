@@ -7,15 +7,15 @@ namespace Identity.Domain.Entities
         public Guid Id { get; set; } = Guid.NewGuid();
         
         public Guid StoreId { get; set; }
-        public Store Store { get; set; }
+        public required Store Store { get; set; }
 
         public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
         
-        public string Description { get; set; } // "Thu tiền đơn hàng #123", "Chi tiền nhập hàng"
+        public required string Description { get; set; } // "Thu tiền đơn hàng #123", "Chi tiền nhập hàng"
         
         public decimal Amount { get; set; } // Số tiền
         
-        public string TransactionType { get; set; } // "INCOME" (Thu), "EXPENSE" (Chi)
+        public required string TransactionType { get; set; } // "INCOME" (Thu), "EXPENSE" (Chi)
         
         public string? ReferenceId { get; set; } // Mã đơn hàng hoặc mã phiếu nhập liên quan
         

@@ -7,7 +7,7 @@ namespace Identity.Domain.Entities
     {
         // ❌ ĐÃ XÓA: Id, Email, PasswordHash (Cha đã có)
 
-        public string FullName { get; set; }
+        public required string FullName { get; set; }
         public bool IsActive { get; set; } // Giữ lại để dùng cho logic khóa mềm
         public bool IsOwner { get; set; }
 
@@ -16,6 +16,6 @@ namespace Identity.Domain.Entities
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // 👈 Thêm ngày tạo
 
-        public ICollection<UserRole> UserRoles { get; set; }
+        public required ICollection<UserRole> UserRoles { get; set; }
     }
 }

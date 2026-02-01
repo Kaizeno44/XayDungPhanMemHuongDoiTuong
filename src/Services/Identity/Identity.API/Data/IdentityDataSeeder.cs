@@ -53,7 +53,8 @@ namespace Identity.API.Data
                     await roleManager.CreateAsync(new Role 
                     { 
                         Name = roleName, 
-                        Description = $"Vai trò {roleName} trong hệ thống" 
+                        Description = $"Vai trò {roleName} trong hệ thống",
+                        UserRoles = new List<UserRole>() // Initialize UserRoles
                     });
                 }
             }
@@ -71,7 +72,8 @@ namespace Identity.API.Data
                     FullName = "Quản Trị Viên Hệ Thống",
                     IsActive = true,
                     IsOwner = false,
-                    EmailConfirmed = true
+                    EmailConfirmed = true,
+                    UserRoles = new List<UserRole>() // Initialize UserRoles
                 };
                 var result = await userManager.CreateAsync(adminUser, "Admin@123");
                 if (result.Succeeded) await userManager.AddToRoleAsync(adminUser, "SuperAdmin");
@@ -93,7 +95,8 @@ namespace Identity.API.Data
                     Phone = "0987654321",
                     TaxCode = "0101234567",
                     SubscriptionPlanId = proPlanId, // Cho dùng gói xịn nhất
-                    SubscriptionExpiryDate = DateTime.UtcNow.AddYears(1)
+                    SubscriptionExpiryDate = DateTime.UtcNow.AddYears(1),
+                    Users = new List<User>() // Initialize Users
                 };
                 await context.Stores.AddAsync(sampleStore);
                 await context.SaveChangesAsync(); // Lưu Store trước để có ID gán cho User
@@ -113,7 +116,8 @@ namespace Identity.API.Data
                     IsActive = true,
                     IsOwner = true,
                     EmailConfirmed = true,
-                    StoreId = sampleStore.Id // Gán vào cửa hàng Ba Tèo
+                    StoreId = sampleStore.Id, // Gán vào cửa hàng Ba Tèo
+                    UserRoles = new List<UserRole>() // Initialize UserRoles
                 };
                 var result = await userManager.CreateAsync(ownerUser, "Admin@123");
                 if (result.Succeeded) await userManager.AddToRoleAsync(ownerUser, "Owner");
@@ -133,7 +137,8 @@ namespace Identity.API.Data
                     IsActive = true,
                     IsOwner = false,
                     EmailConfirmed = true,
-                    StoreId = sampleStore.Id // Gán vào cửa hàng Ba Tèo
+                    StoreId = sampleStore.Id, // Gán vào cửa hàng Ba Tèo
+                    UserRoles = new List<UserRole>() // Initialize UserRoles
                 };
                 var result = await userManager.CreateAsync(staffUser, "Admin@123");
                 if (result.Succeeded) await userManager.AddToRoleAsync(staffUser, "Employee");

@@ -2,11 +2,11 @@ namespace Identity.Application.DTOs
 {
     public class RegisterRequest
     {
-        public string FullName { get; set; }
-        public string Email { get; set; }
-        public string Password { get; set; }
-        public string StoreName { get; set; } // Tên cửa hàng
-        public string StoreAddress { get; set; }
-        public string Phone { get; set; }
+        public required string FullName { get; set; }
+        public required string Email { get; set; }
+        public required string Password { get; set; }
+        public required string StoreName { get; set; } // Tên cửa hàng
+        public required string StoreAddress { get; set; }
+        public required string Phone { get; set; }
     }
 }

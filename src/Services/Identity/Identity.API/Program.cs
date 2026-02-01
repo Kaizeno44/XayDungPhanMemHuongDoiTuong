@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Shared.Kernel.Extensions;
 using System.Reflection;
 using Identity.API.Middlewares; // 👈 Thêm using này
+using MassTransit; // 👈 Thêm using này
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,7 +56,7 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         // 👇 Đọc SecretKey từ appsettings.json
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]))
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"] ?? throw new InvalidOperationException("JwtSettings:SecretKey not configured.")))
     };
 });
 
@@ -75,7 +76,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // 5. RabbitMQ
-builder.Services.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
+builder.Services.AddMassTransit(x =>
+{
+    x.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
+});
 
 // 🔥 6. CẤU HÌNH SWAGGER (HIỆN NÚT Ổ KHÓA) 🔥
 builder.Services.AddSwaggerGen(c =>

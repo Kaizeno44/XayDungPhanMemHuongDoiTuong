@@ -57,12 +57,12 @@ namespace Identity.API.Controllers
             // 1. Tìm user
             var user = await _context.Users
                 .Include(u => u.Store)
-                    .ThenInclude(s => s.SubscriptionPlan)
                 .FirstOrDefaultAsync(u => u.Email == request.Email);
             if (user == null)
             {
                 return Unauthorized("Email này không tồn tại trong hệ thống.");
             }
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
 
             // 2. Kiểm tra Mật khẩu
             // Thêm kiểm tra sơ bộ cho dữ liệu Seed (nếu chưa hash) hoặc dùng Identity check
@@ -141,8 +141,8 @@ namespace Identity.API.Controllers
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Email, user.Email ?? ""),
-                new Claim(ClaimTypes.Name, user.FullName ?? ""),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.FullName),
                 new Claim(ClaimTypes.Role, roleName) // Role lấy từ tham số truyền vào
             };
 
@@ -153,10 +153,9 @@ namespace Identity.API.Controllers
             }
 
             // Thêm Claim StoreId
-            if (user.StoreId.HasValue)
-            {
-                claims.Add(new Claim("StoreId", user.StoreId.Value.ToString()));
-            }
+#pragma warning disable CS8604 // Possible null reference argument for parameter 'value' in 'Claim.Claim(string type, string value)'.
+            claims.Add(new Claim("StoreId", user.StoreId.HasValue ? user.StoreId.Value.ToString() : string.Empty));
+#pragma warning restore CS8604 // Possible null reference argument for parameter 'value' in 'Claim.Claim(string type, string value)'.
 
             // Thêm quyền AI
             claims.Add(new Claim("AllowAI", allowAI.ToString()));
@@ -178,7 +177,7 @@ namespace Identity.API.Controllers
 
     public class LoginRequest
     {
-        public string Email { get; set; }
-        public string Password { get; set; }
+        public required string Email { get; set; }
+        public required string Password { get; set; }
     }
 }

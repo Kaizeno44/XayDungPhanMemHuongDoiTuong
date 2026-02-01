@@ -3,7 +3,7 @@ namespace Identity.Domain.Entities
     public class SubscriptionPlan
     {
         public Guid Id { get; set; } = Guid.NewGuid();
-        public string Name { get; set; } // Ví dụ: "Gói Cơ Bản", "Gói Nâng Cao"
+        public required string Name { get; set; } // Ví dụ: "Gói Cơ Bản", "Gói Nâng Cao"
         public decimal Price { get; set; } // 100.000 VND
         public int DurationInMonths { get; set; } // 1 tháng, 12 tháng
         

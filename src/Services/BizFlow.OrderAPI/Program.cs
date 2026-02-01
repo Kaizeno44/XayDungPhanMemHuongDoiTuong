@@ -5,6 +5,7 @@ using MassTransit;
 using BizFlow.OrderAPI.Hubs;
 using Shared.Kernel.Extensions;
 using System.Reflection;
+using BizFlow.OrderAPI.Consumers; // Thêm dòng này
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,37 +21,18 @@ builder.Services.AddDbContext<OrderDbContext>(options =>
 // =========================================================================
 // 2. CẤU HÌNH RABBITMQ (MASS TRANSIT + OUTBOX)
 // =========================================================================
-// builder.Services.AddMassTransit(x =>
-// {
-//     // A. Cấu hình Outbox Pattern cho EF Core
-//     // Giúp đảm bảo tính toàn vẹn: Order lưu thành công -> Message mới được gửi đi.
-//     x.AddEntityFrameworkOutbox<OrderDbContext>(o =>
-//     {
-//         // Cấu hình lock statement provider cho MySQL
-//         o.UseMySql(); 
-// 
-//         // Message sẽ được đẩy vào bảng Outbox trong cùng Transaction với SaveChangesAsync
-//         o.UseBusOutbox(); 
-//     });
-// 
-//     // B. Cấu hình RabbitMQ Transport
-//     x.UsingRabbitMq((context, cfg) =>
-//     {
-//         // Lấy thông tin từ appsettings.json (hoặc dùng mặc định nếu null)
-//         var rabbitMqHost = builder.Configuration["RabbitMq:Host"] ?? "localhost";
-//         var rabbitMqUser = builder.Configuration["RabbitMq:Username"] ?? "guest";
-//         var rabbitMqPass = builder.Configuration["RabbitMq:Password"] ?? "guest";
-// 
-//         cfg.Host(rabbitMqHost, "/", h =>
-//         {
-//             h.Username(rabbitMqUser);
-//             h.Password(rabbitMqPass);
-//         });
-// 
-//         // Tự động cấu hình các endpoint
-//         cfg.ConfigureEndpoints(context);
-//     });
-// });
+builder.Services.AddMassTransit(x =>
+{
+    // A. Cấu hình Outbox Pattern cho EF Core
+    x.AddEntityFrameworkOutbox<OrderDbContext>(o =>
+    {
+        o.UseMySql(); 
+        o.UseBusOutbox(); 
+    });
+
+    // B. Cấu hình RabbitMQ Transport và Consumer thông qua AddEventBus
+    x.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
+});
 
 // =========================================================================
 // 3. CÁC SERVICE KHÁC
@@ -67,9 +49,6 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSignalR();
-
-// Thêm RabbitMQ
-builder.Services.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // CORS
 builder.Services.AddCors(options =>

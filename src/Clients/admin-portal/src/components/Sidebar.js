@@ -3,11 +3,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 // Nếu bạn chưa cài icon, có thể dùng text hoặc cài thư viện lucide-react
-import { LayoutDashboard, ShoppingBag, ClipboardList, LogOut, Settings, User, MessageSquare, Users } from "lucide-react"; 
+import { LayoutDashboard, ShoppingBag, ClipboardList, LogOut, Settings, User, MessageSquare, Users, Bell } from "lucide-react"; 
+import { useNotification } from '@/components/NotificationProvider';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { notifications, markAllAsRead, savedNotifications, saveNotification, toggleNotificationHistory } = useNotification();
+  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
   const menuItems = [
     { name: "Tổng quan", href: "/merchant/dashboard", icon: LayoutDashboard },
@@ -28,9 +31,18 @@ export default function Sidebar() {
       
       {/* --- PHẦN 1: LOGO & MENU (Nằm ở trên) --- */}
       
-      {/* Logo */}
-      <div className="h-16 flex items-center justify-center border-b border-gray-100">
+      {/* Logo và Nút Chuông */}
+      <div className="h-16 flex items-center justify-between border-b border-gray-100 px-4">
         <h1 className="text-2xl font-bold text-blue-600">BizFlow</h1>
+        <button
+          onClick={toggleNotificationHistory}
+          className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+        >
+          <Bell className="w-5 h-5 text-gray-600" />
+          {unreadNotificationsCount > 0 && (
+            <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+          )}
+        </button>
       </div>
 
       {/* Menu List - Dùng flex-1 để nó chiếm hết khoảng trống */}

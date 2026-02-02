@@ -61,6 +61,6 @@ namespace Identity.API.Controllers
 
     public class RegisterTokenRequest
     {
-        public string DeviceToken { get; set; }
+        public required string DeviceToken { get; set; }
     }
 }

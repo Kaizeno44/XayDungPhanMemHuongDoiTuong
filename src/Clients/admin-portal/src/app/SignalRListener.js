@@ -2,8 +2,11 @@
 
 import { useEffect } from "react";
 import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
+import { useNotification } from '@/components/NotificationProvider';
 
 export default function SignalRListener() {
+  const { addNotification } = useNotification();
+
   useEffect(() => {
     // 1. Cấu hình kết nối (Thay cổng 5103 bằng cổng API thật của bạn)
     const connection = new HubConnectionBuilder()
@@ -23,7 +26,7 @@ export default function SignalRListener() {
     // 3. Lắng nghe sự kiện
     connection.on("ReceiveOrderNotification", (data) => {
       console.log("🔔 TING TING:", data);
-      alert(`🔔 TING TING! Đơn mới từ: ${data.message} - 💰 ${data.totalAmount}`);
+      addNotification(`Đơn mới: ${data.message}`, 'info', 10000);
     });
 
     // Cleanup khi component bị hủy

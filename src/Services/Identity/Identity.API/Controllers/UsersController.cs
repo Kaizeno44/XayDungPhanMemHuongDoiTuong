@@ -105,7 +105,8 @@ namespace Identity.API.Controllers
                 IsActive = true,
                 IsOwner = false,
                 StoreId = Guid.Parse(storeIdClaim),
-                EmailConfirmed = true
+                EmailConfirmed = true,
+                UserRoles = new List<UserRole>() // Initialize UserRoles
             };
 
             // 4. Sử dụng UserManager để tạo (Tự động Hash mật khẩu)
@@ -224,7 +225,7 @@ namespace Identity.API.Controllers
     public class SaveDeviceTokenRequest
     {
         public Guid UserId { get; set; }
-        public string DeviceToken { get; set; }
+        public required string DeviceToken { get; set; }
         public string? Platform { get; set; } // "android", "ios", "web"
     }
 }

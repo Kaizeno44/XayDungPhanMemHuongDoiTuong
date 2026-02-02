@@ -54,20 +54,26 @@ namespace Identity.API.Controllers
             // 1. Lấy ID cửa hàng từ Token
             var storeIdClaim = User.FindFirst("StoreId")?.Value;
             if (string.IsNullOrEmpty(storeIdClaim)) return BadRequest("Không xác định được cửa hàng.");
-            
+            var storeId = Guid.Parse(storeIdClaim);
+
             // 2. Kiểm tra xem sđt đã tồn tại trong cửa hàng này chưa
             var exists = await _context.Customers
-                .AnyAsync(c => c.StoreId == Guid.Parse(storeIdClaim) && c.PhoneNumber == request.PhoneNumber);
+                .AnyAsync(c => c.StoreId == storeId && c.PhoneNumber == request.PhoneNumber);
             
             if (exists) return BadRequest("Số điện thoại này đã tồn tại trong danh sách khách hàng.");
 
-            // 3. Tạo khách mới
+            // 3. Lấy thông tin Store
+            var store = await _context.Stores.FindAsync(storeId);
+            if (store == null) return BadRequest("Cửa hàng không tồn tại.");
+
+            // 4. Tạo khách mới
             var newCustomer = new Customer
             {
                 FullName = request.FullName,
                 PhoneNumber = request.PhoneNumber,
                 Address = request.Address,
-                StoreId = Guid.Parse(storeIdClaim), // Gán cứng vào Store của nhân viên
+                StoreId = storeId, // Gán cứng vào Store của nhân viên
+                Store = store, // Assign the retrieved Store object
                 DebtBalance = 0
             };
 
@@ -81,8 +87,8 @@ namespace Identity.API.Controllers
     // Class DTO (Data Transfer Object) để hứng dữ liệu gửi lên
     public class CreateCustomerRequest
     {
-        public string FullName { get; set; }
-        public string PhoneNumber { get; set; }
+        public required string FullName { get; set; }
+        public required string PhoneNumber { get; set; }
         public string? Address { get; set; }
     }
 }

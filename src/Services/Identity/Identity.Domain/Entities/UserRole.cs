@@ -8,7 +8,7 @@ namespace Identity.Domain.Entities
         // ❌ ĐÃ XÓA: UserId và RoleId (Cha đã có, để lại là bị lỗi ngay)
 
         // 👇 Chỉ giữ lại Navigation Property để code dễ gọi (u.UserRoles...)
-        public virtual User User { get; set; }
-        public virtual Role Role { get; set; }
+        public required virtual User User { get; set; }
+        public required virtual Role Role { get; set; }
     }
 }

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Cookies from "js-cookie";
+import HeaderNotification from '@/components/HeaderNotification';
 
 export default function MerchantLayout({ children }) {
   const pathname = usePathname();
@@ -53,6 +54,9 @@ export default function MerchantLayout({ children }) {
 
       {/* NỘI DUNG CHÍNH */}
       <main className="flex-1 p-8 overflow-y-auto">
+        <div className="flex justify-end mb-4">
+          <HeaderNotification />
+        </div>
         {children}
       </main>
     </div>

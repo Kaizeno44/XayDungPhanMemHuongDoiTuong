@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Shared.Kernel.Extensions;
 using System.Reflection;
 using Identity.API.Middlewares; // 👈 Thêm using này
+using MassTransit; // 👈 Thêm using này
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,7 +56,7 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         // 👇 Đọc SecretKey từ appsettings.json
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]))
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"] ?? throw new InvalidOperationException("JwtSettings:SecretKey not configured.")))
     };
 });
 
@@ -75,7 +76,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // 5. RabbitMQ
-builder.Services.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
+builder.Services.AddMassTransit(x =>
+{
+    x.AddEventBus(builder.Configuration, Assembly.GetExecutingAssembly());
+});
 
 // 🔥 6. CẤU HÌNH SWAGGER (HIỆN NÚT Ổ KHÓA) 🔥
 builder.Services.AddSwaggerGen(c =>
@@ -128,41 +132,11 @@ using (var scope = app.Services.CreateScope())
         await context.Database.MigrateAsync(); 
         Console.WriteLine("--> System: Migrations completed.");
 
-        // --- TỰ ĐỘNG TẠO BẢNG FEEDBACKS (VÌ THIẾU MIGRATION) ---
-        try {
-            var createTableSql = @"
-                CREATE TABLE IF NOT EXISTS ""Feedbacks"" (
-                    ""Id"" UUID PRIMARY KEY,
-                    ""Title"" TEXT NOT NULL,
-                    ""Content"" TEXT NOT NULL,
-                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL,
-                    ""IsResolved"" BOOLEAN NOT NULL,
-                    ""UserId"" UUID NOT NULL,
-                    ""StoreId"" UUID NULL,
-                    CONSTRAINT ""FK_Feedbacks_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""AspNetUsers"" (""Id"") ON DELETE CASCADE,
-                    CONSTRAINT ""FK_Feedbacks_Stores_StoreId"" FOREIGN KEY (""StoreId"") REFERENCES ""Stores"" (""Id"") ON DELETE SET NULL
-                );";
-            await context.Database.ExecuteSqlRawAsync(createTableSql);
-            Console.WriteLine("--> System: Feedbacks table checked/created.");
-        } catch (Exception ex) {
-            Console.WriteLine("--> System: Error creating Feedbacks table: " + ex.Message);
-        }
-
         var userManager = services.GetRequiredService<UserManager<User>>();
         var roleManager = services.GetRequiredService<RoleManager<Role>>();
         
         Console.WriteLine("--> System: Starting Seeder...");
         await IdentityDataSeeder.SeedAsync(context, userManager, roleManager);
-
-        // Đồng bộ StoreId cho Nguyễn Văn Ba (Sử dụng mã ID thực tế đang hoạt động)
-        var baStoreId = Guid.Parse("404fb81a-d226-4408-9385-60f666e1c001");
-        var baUser = await userManager.FindByEmailAsync("owner@bizflow.com");
-        
-        if (baUser != null && baUser.StoreId != baStoreId) {
-            baUser.StoreId = baStoreId;
-            await userManager.UpdateAsync(baUser);
-            Console.WriteLine($"--> System: Reverted Nguyễn Văn Ba to StoreId: {baStoreId}");
-        }
 
         Console.WriteLine("--> System: Seeding process finished.");
     } catch (Exception ex) {

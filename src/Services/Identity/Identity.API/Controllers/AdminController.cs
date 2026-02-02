@@ -34,13 +34,26 @@ namespace Identity.API.Controllers
             // 1. Lấy danh sách tất cả chủ hộ (Owner)
             var owners = await _userManager.GetUsersInRoleAsync("Owner");
             
+            // Ensure owners is not null, though GetUsersInRoleAsync should return an empty list if no users are found.
+            if (owners == null) owners = new List<User>();
+
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
             // 2. Tính số chủ hộ đang hoạt động
             var activeOwnersCount = owners.Count(u => u.IsActive);
+#pragma warning restore CS8602 // Dereference of a possibly null reference.
+#pragma warning restore CS8602 // Dereference of a possibly null reference.
 
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
             // 3. Tính số đăng ký mới trong tháng này
             var now = DateTime.UtcNow;
             var firstDayOfMonth = new DateTime(now.Year, now.Month, 1);
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
             var newRegistrationsCount = owners.Count(u => u.CreatedAt >= firstDayOfMonth);
+#pragma warning restore CS8602 // Dereference of a possibly null reference.
+#pragma warning restore CS8602 // Dereference of a possibly null reference.
 
             // 4. Tính tổng doanh thu từ gói cước
             // Lấy tất cả các Store có gán gói cước và tính tổng Price
@@ -97,17 +110,17 @@ namespace Identity.API.Controllers
             {
                 // Lấy tên cửa hàng nếu có
                 var storeName = "Chưa có cửa hàng";
-                if (user.StoreId != null)
+                if (user.StoreId.HasValue)
                 {
-                    var store = await _context.Stores.FindAsync(user.StoreId);
+                    var store = await _context.Stores.FindAsync(user.StoreId.Value);
                     if (store != null) storeName = store.StoreName;
                 }
 
                 // Lấy thông tin gói cước
                 var planName = "Chưa đăng ký";
-                if (user.StoreId != null)
+                if (user.StoreId.HasValue)
                 {
-                    var store = await _context.Stores.Include(s => s.SubscriptionPlan).FirstOrDefaultAsync(s => s.Id == user.StoreId);
+                    var store = await _context.Stores.Include(s => s.SubscriptionPlan).FirstOrDefaultAsync(s => s.Id == user.StoreId.Value);
                     if (store?.SubscriptionPlan != null) planName = store.SubscriptionPlan.Name;
                 }
 
@@ -277,7 +290,8 @@ namespace Identity.API.Controllers
                 
                 // Gán gói cước đã chọn
                 SubscriptionPlanId = request.SubscriptionPlanId, 
-                SubscriptionExpiryDate = DateTime.UtcNow.AddMonths(1) // Mặc định 1 tháng
+                SubscriptionExpiryDate = DateTime.UtcNow.AddMonths(1), // Mặc định 1 tháng
+                Users = new List<User>() // Initialize Users
             };
 
             _context.Stores.Add(newStore);
@@ -290,7 +304,8 @@ namespace Identity.API.Controllers
                 Email = request.Email,
                 FullName = request.FullName, // Nhớ dòng này
                 StoreId = newStore.Id,
-                IsActive = true 
+                IsActive = true,
+                UserRoles = new List<UserRole>() // Initialize UserRoles
             };
 
             var result = await _userManager.CreateAsync(newUser, request.Password);

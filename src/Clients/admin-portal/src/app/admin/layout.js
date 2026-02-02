@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Users, DollarSign, Settings, LogOut, LayoutDashboard, MessageSquare } from "lucide-react";
 import Cookies from "js-cookie";
 import { useRouter, usePathname } from "next/navigation";
+import HeaderNotification from '@/components/HeaderNotification';
 
 export default function AdminLayout({ children }) {
   const router = useRouter();
@@ -61,7 +62,10 @@ export default function AdminLayout({ children }) {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 overflow-auto p-4">
+      <main className="flex-1 overflow-auto">
+        <div className="flex justify-end p-4">
+          <HeaderNotification />
+        </div>
         {children}
       </main>
     </div>

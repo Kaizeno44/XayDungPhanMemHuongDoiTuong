@@ -6,7 +6,7 @@ namespace Shared.Kernel.Events
     public class OrderCreatedEvent
     {
         public Guid OrderId { get; set; }
-        public string OrderCode { get; set; } // [MỚI] Thêm mã đơn hàng
+        public required string OrderCode { get; set; } // [MỚI] Thêm mã đơn hàng
         public Guid StoreId { get; set; }
         public decimal TotalAmount { get; set; }
         public DateTime CreatedAt { get; set; }

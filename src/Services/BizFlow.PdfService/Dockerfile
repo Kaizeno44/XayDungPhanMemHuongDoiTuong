@@ -3,14 +3,13 @@ WORKDIR /app
 EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
-COPY ["src/Services/BizFlow.PdfService/BizFlow.PdfService.csproj", "src/Services/BizFlow.PdfService/"]
-RUN dotnet restore "src/Services/BizFlow.PdfService/BizFlow.PdfService.csproj"
+WORKDIR /src/BizFlow.PdfService
 COPY . .
-WORKDIR "/src/src/Services/BizFlow.PdfService"
+RUN dotnet restore "BizFlow.PdfService.csproj"
 RUN dotnet build "BizFlow.PdfService.csproj" -c Release -o /app/build
 
 FROM build AS publish
+WORKDIR /src/BizFlow.PdfService
 RUN dotnet publish "BizFlow.PdfService.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final

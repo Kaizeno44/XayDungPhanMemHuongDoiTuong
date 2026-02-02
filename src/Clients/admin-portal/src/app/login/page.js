@@ -8,8 +8,8 @@ import { jwtDecode } from "jwt-decode";
 export default function LoginPage() {
   const router = useRouter();
   
-  const [email, setEmail] = useState('bateo@bizflow.com');
-  const [password, setPassword] = useState('123456');
+  const [email, setEmail] = useState('superadmin@bizflow.com');
+  const [password, setPassword] = useState('Admin@123');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 

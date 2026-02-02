@@ -46,6 +46,7 @@ namespace Identity.API.Controllers
 
         // 2. GET: api/feedback - Lấy danh sách phản hồi (Dành cho SuperAdmin)
         [HttpGet]
+        [Authorize(Roles = "SuperAdmin")] // Yêu cầu xác thực và vai trò SuperAdmin
         public async Task<IActionResult> GetAllFeedback()
         {
             var feedbacks = await _context.Feedbacks
@@ -70,6 +71,7 @@ namespace Identity.API.Controllers
 
         // 3. PUT: api/feedback/{id}/resolve - Đánh dấu đã xử lý
         [HttpPut("{id}/resolve")]
+        [Authorize(Roles = "SuperAdmin")] // Yêu cầu xác thực và vai trò SuperAdmin
         public async Task<IActionResult> ResolveFeedback(Guid id)
         {
             var feedback = await _context.Feedbacks.FindAsync(id);

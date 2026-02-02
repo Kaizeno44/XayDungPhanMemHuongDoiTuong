@@ -34,11 +34,11 @@ DateTime _parseDate(dynamic date) {
 class CartItem {
   final int productId;
   final String productName;
-  final int unitId;
-  final String unitName;
-  final double price;
+  int unitId;       
+  String unitName; 
+  double price;
   int quantity;
-  final double maxStock;
+  double maxStock;
 
   CartItem({
     required this.productId,

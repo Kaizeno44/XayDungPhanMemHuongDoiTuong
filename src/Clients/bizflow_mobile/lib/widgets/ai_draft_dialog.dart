@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
-import '../cart_provider.dart';
+import '../features/cart/cart_controller.dart';
+import '../providers/app_providers.dart'; // Để gọi productRepositoryProvider
+import '../core/result.dart'; // Để check kết quả Success/Failure
+import '../models/product.dart'; // Để dùng model Product
 
-class AiDraftDialog extends StatefulWidget {
+class AiDraftDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> data;
 
   const AiDraftDialog({super.key, required this.data});
 
   @override
-  State<AiDraftDialog> createState() => _AiDraftDialogState();
+  ConsumerState<AiDraftDialog> createState() => _AiDraftDialogState();
 }
 
-class _AiDraftDialogState extends State<AiDraftDialog> {
+class _AiDraftDialogState extends ConsumerState<AiDraftDialog>{
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   String _paymentMethod = 'Cash';
@@ -28,6 +31,11 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
   void initState() {
     super.initState();
     _initData();
+    
+    // 🔥 MỚI THÊM: Gọi hàm lấy tồn kho thật ngay sau khi init xong
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchRealStock();
+    });
   }
 
   void _initData() {
@@ -74,6 +82,38 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
     }
   }
 
+  // 🔥 MỚI THÊM: Hàm này sẽ chạy ngầm để cập nhật maxStock từ API
+  Future<void> _fetchRealStock() async {
+    final productRepo = ref.read(productRepositoryProvider);
+
+    for (var item in _draftItems) {
+      final result = await productRepo.getProductById(item.productId);
+
+      if (result is Success<Product>) {
+        final product = result.data;
+        
+        if (mounted) {
+          setState(() {
+            // [FIX QUAN TRỌNG] Cập nhật lại UnitID và Giá từ dữ liệu thật
+            // Vì AI không biết ID của đơn vị tính, cần lấy từ Product gốc
+            item.unitId = product.unitId;         // <-- Thêm dòng này (đảm bảo model Product có trường unitId)
+            item.unitName = product.unitName;     // <-- Cập nhật tên đơn vị cho khớp hiển thị
+            item.price = product.price;           // <-- Cập nhật giá chuẩn từ DB (tránh AI nhận diện sai giá)
+
+            // Cập nhật tồn kho (Code cũ đã có)
+            item.maxStock = product.inventoryQuantity;
+
+            // Logic kiểm tra số lượng (Code cũ)
+            if (item.quantity > item.maxStock) {
+              item.quantity = item.maxStock.toInt();
+              _qtyControllers[item.productId]?.text = item.quantity.toString();
+            }
+          });
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -96,13 +136,27 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
   }
 
   // Hàm cập nhật số lượng từ nút +/-
+  // Hàm cập nhật số lượng từ nút +/-
   void _updateQuantity(CartItem item, int change) {
     setState(() {
       final newQty = item.quantity + change;
+      
+      // Kiểm tra cận dưới (>0)
       if (newQty > 0) {
-        item.quantity = newQty;
-        // Cập nhật text hiển thị trong ô nhập luôn
-        _qtyControllers[item.productId]?.text = newQty.toString();
+        // Kiểm tra cận trên (<= maxStock)
+        if (newQty <= item.maxStock) {
+          item.quantity = newQty;
+          _qtyControllers[item.productId]?.text = newQty.toString();
+        } else {
+          // Nếu vượt quá -> Hiện thông báo nhỏ
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("⚠️ Chỉ còn ${item.maxStock.toInt()} sản phẩm trong kho!"),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
       }
     });
   }
@@ -110,25 +164,43 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
   // Hàm xử lý khi gõ phím vào ô số lượng
   void _onTypeQuantity(CartItem item, String value) {
     final newQty = int.tryParse(value);
-    if (newQty != null && newQty > 0) {
-      item.quantity = newQty;
+    if (newQty != null) {
+      if (newQty > item.maxStock) {
+        // Nếu nhập quá tồn kho -> Gán về maxStock
+        item.quantity = item.maxStock.toInt();
+        
+        // Cập nhật lại text trong ô nhập để người dùng thấy số đã bị sửa
+        // Dùng addPostFrameCallback để tránh lỗi conflict khi đang gõ
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+            _qtyControllers[item.productId]?.text = item.quantity.toString();
+            // Di chuyển con trỏ về cuối dòng
+            _qtyControllers[item.productId]?.selection = TextSelection.fromPosition(
+              TextPosition(offset: item.quantity.toString().length),
+            );
+        });
+
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text("⚠️ Đã điều chỉnh về tối đa ${item.maxStock.toInt()}!"))
+        );
+      } else if (newQty > 0) {
+        // Nếu hợp lệ
+        item.quantity = newQty;
+      }
     }
   }
 
   void _confirmOrder() {
-    final cart = Provider.of<CartProvider>(context, listen: false);
-
-    cart.setOrderInfoFromAI(
-      name: _nameController.text,
-      phone: _phoneController.text,
-      method: _paymentMethod,
-    );
+    final cartController = ref.read(cartControllerProvider.notifier);
 
     int count = 0;
     for (var item in _draftItems) {
       if (item.quantity > 0) {
-        cart.addToCart(item);
-        count++;
+        // Gọi hàm addToCart đã có sẵn trong cart_controller.dart
+        final error = cartController.addToCart(item); 
+        if (error == null) {
+          count++;
+        }
       }
     }
 
@@ -182,7 +254,7 @@ class _AiDraftDialogState extends State<AiDraftDialog> {
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                initialValue: _paymentMethod,
+                value: _paymentMethod,
                 decoration: const InputDecoration(
                   labelText: "Thanh toán",
                   isDense: true,
